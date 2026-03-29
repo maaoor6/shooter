@@ -17,6 +17,8 @@
     body { display: flex; align-items: center; justify-content: center; }
     canvas {
       display: block;
+      position: fixed;
+      top: 0; left: 0;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
       cursor: none;
@@ -98,17 +100,22 @@ class InputHandler {
   // Fire whenever right joystick is deflected past 15%
   get isFiring(){return this.rightJoy.active&&this.rightJoy.magnitude>0.15;}
   _pos(touch,canvas){
+    // Canvas is fixed at top-left of screen, so no getBoundingClientRect offset needed
+    // but we use it for future-proofness
     const r=canvas.getBoundingClientRect();
-    return {cssX:touch.clientX-r.left,cssY:touch.clientY-r.top,
-      gameX:(touch.clientX-r.left)/this._scale/2,
-      gameY:(touch.clientY-r.top)/this._scale/2,cw:r.width,ch:r.height};
+    const cssX=touch.clientX-r.left,cssY=touch.clientY-r.top;
+    return {cssX,cssY,
+      // canvasX/Y = logical canvas coords (0..CW in x, 0.._vch in y)
+      canvasX:cssX/this._scale, canvasY:cssY/this._scale,
+      gameX:cssX/this._scale/2, gameY:cssY/this._scale/2,
+      cw:r.width,ch:r.height};
   }
   _onTouchStart(e,canvas){
     this.anyKey=true; this.isMobile=true;
     for(const t of e.changedTouches){
       const p=this._pos(t,canvas);
-      // Weapon buttons hit test (bottom-center strip in CW/CH canvas space)
-      if(this._checkWeaponButtons(p.gameX*2,p.gameY*2))continue;
+      // Weapon buttons hit test (uses logical canvas coords)
+      if(this._checkWeaponButtons(p.canvasX,p.canvasY))continue;
       if(p.cssX<p.cw*0.5&&!this.joystick.active){
         // Left half → movement joystick
         this.joystick.active=true;this.joystick.id=t.identifier;
@@ -159,12 +166,18 @@ class InputHandler {
     }
   }
   _checkWeaponButtons(hx,hy){
-    // hx,hy in CW/CH canvas coords (0..640, 0..480)
+    // hx,hy in logical canvas coords (0..CW in x; 0.._vch in y)
     const slots=Object.keys(WEAPONS);
     const btnW=38,gap=3,totalW=slots.length*(btnW+gap)-gap;
-    const startX=(CW-totalW)/2,startY=CH-36,btnH=30;
+    const startX=(CW-totalW)/2;
+    // Portrait: buttons live in the controls zone below game area
+    // Landscape: buttons at bottom of game area
+    const vch=this._vch||CH;
+    const startY=this._portrait?(CH+(vch-CH)*0.72):(CH-36);
+    const btnH=32;
     for(let i=0;i<slots.length;i++){
-      if(hx>=startX+i*(btnW+gap)&&hx<=startX+i*(btnW+gap)+btnW&&hy>=startY&&hy<=startY+btnH){
+      const bx=startX+i*(btnW+gap);
+      if(hx>=bx&&hx<=bx+btnW&&hy>=startY&&hy<=startY+btnH){
         this.pendingWeaponSwitch=slots[i];return true;
       }
     }
@@ -359,9 +372,13 @@ class Player {
     // Aim: right joystick on mobile, mouse on desktop
     if(input.isMobile&&input.rightJoy.active&&input.rightJoy.magnitude>0.1){
       this.angle=input.rightJoy.angle;
-    } else {
+      // ── Crosshair fix: project aim cursor from player in joystick direction ──
+      input.mouse.x=this.x+Math.cos(this.angle)*55;
+      input.mouse.y=this.y+Math.sin(this.angle)*55;
+    } else if(!input.isMobile){
       this.angle=Math.atan2(input.mouse.y-this.y,input.mouse.x-this.x);
     }
+    // Keep angle if rightJoy inactive on mobile (don't snap back to 0)
     // Aim assist (mobile only): gently snap toward nearest enemy in cone
     if(input.isMobile&&game&&game.enemies&&game.enemies.length>0){
       const ax=Math.cos(this.angle),ay=Math.sin(this.angle);
@@ -1221,8 +1238,11 @@ function drawHUD(ctx,g){
     ctx.textAlign='right';ctx.fillText('SPEED '+g.player.speedBoost.toFixed(1)+'s',iconX,4);ctx.textAlign='left';
   }
   const w=g.player.weapon;const wdef=WEAPONS[w];
-  ctx.font='bold 12px monospace';ctx.fillStyle=wdef.col;ctx.fillText('['+wdef.name+']',4,CH-48);
-  if(w!=='pistol'){ctx.font='10px monospace';ctx.fillStyle=PAL.GREY;ctx.fillText('AMMO: '+g.player.ammo[w],4,CH-34);}
+  // On mobile, weapon name shown above weapon buttons; on desktop at bottom-left
+  if(!g.input||!g.input.isMobile){
+    ctx.font='bold 12px monospace';ctx.fillStyle=wdef.col;ctx.fillText('['+wdef.name+']',4,CH-48);
+    if(w!=='pistol'){ctx.font='10px monospace';ctx.fillStyle=PAL.GREY;ctx.fillText('AMMO: '+g.player.ammo[w],4,CH-34);}
+  }
   // 8-weapon slots (desktop only — mobile draws them in drawVirtualControls)
   if(!g.input||!g.input.isMobile){
     const slots=Object.keys(WEAPONS);
@@ -1273,17 +1293,9 @@ function drawHUD(ctx,g){
 function drawVirtualControls(ctx,g){
   const input=g.input;
   if(!input||!input.isMobile)return;
-  // Portrait warning
-  if(window.innerHeight>window.innerWidth*1.2){
-    ctx.fillStyle='rgba(0,0,0,0.88)';ctx.fillRect(0,0,CW,CH);
-    ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.font='bold 26px monospace';ctx.fillStyle=PAL.YELLOW;
-    ctx.fillText('ROTATE DEVICE',CW/2,CH/2-18);
-    ctx.font='14px monospace';ctx.fillStyle=PAL.WHITE;
-    ctx.fillText('landscape for best play',CW/2,CH/2+18);
-    ctx.textAlign='left';ctx.textBaseline='top';return;
-  }
   const s=input._scale;
+  const isPortrait=g._isPortrait||false;
+  const vch=g._vch||CH; // total logical canvas height
   const maxR=CW*JOY_R; // max throw in canvas coords
 
   // ── Draw one joystick ────────────────────────────────────────────────────────
@@ -1353,15 +1365,22 @@ function drawVirtualControls(ctx,g){
     ctx.globalAlpha=1;ctx.textAlign='left';ctx.textBaseline='top';
   }
 
-  // Left joystick — movement (bottom-left)
-  drawJoystick(input.joystick, CW*0.13, CH*0.80, PAL.CYAN, 'MOVE', false);
-  // Right joystick — aim + fire (bottom-right)
-  drawJoystick(input.rightJoy, CW*0.87, CH*0.80, PAL.ORANGE, input.isFiring?'FIRE':'AIM', true);
+  // Joystick Y positions: in portrait they're in the controls zone below game
+  const ctrlH=isPortrait?(vch-CH):0;
+  const joyY=isPortrait?(CH+ctrlH*0.40):(CH*0.80);
+  const joyLX=CW*0.15, joyRX=CW*0.85;
 
-  // ── Weapon buttons (bottom-center strip) ────────────────────────────────────
+  // Left joystick — movement
+  drawJoystick(input.joystick, joyLX, joyY, PAL.CYAN, 'MOVE', false);
+  // Right joystick — aim + fire
+  drawJoystick(input.rightJoy, joyRX, joyY, PAL.ORANGE, input.isFiring?'FIRE':'AIM', true);
+
+  // ── Weapon buttons ─────────────────────────────────────────────────────────
   const slots=Object.keys(WEAPONS);
   const btnW=38,gap=3,totalW=slots.length*(btnW+gap)-gap;
-  const startX=(CW-totalW)/2,startY=CH-36,btnH=30,r2=4;
+  const startX=(CW-totalW)/2;
+  const startY=isPortrait?(CH+ctrlH*0.72):(CH-36);
+  const btnH=isPortrait?34:30,r2=4;
 
   slots.forEach((sw,i)=>{
     const has=sw==='pistol'||(g.player&&g.player.ammo[sw]>0);
@@ -1502,19 +1521,34 @@ class Game {
   }
   _setupScale(){
     const dpr=window.devicePixelRatio||1;
-    const s=Math.min(window.innerWidth/CW,window.innerHeight/CH);
-    const dispW=Math.floor(CW*s),dispH=Math.floor(CH*s);
-    // Canvas buffer = display size × DPR for Retina/HiDPI sharpness
-    this.canvas.width=dispW*dpr;
-    this.canvas.height=dispH*dpr;
-    this.canvas.style.width=dispW+'px';
-    this.canvas.style.height=dispH+'px';
+    const vw=window.innerWidth,vh=window.innerHeight;
+    // Portrait when screen is taller than wide
+    const isPortrait=vh>vw*1.1;
+    let s;
+    if(isPortrait){
+      // Fill full width; controls area lives below the game area
+      s=vw/CW;
+    } else {
+      // Landscape: fit entire game into viewport
+      s=Math.min(vw/CW,vh/CH);
+    }
+    // Canvas = full viewport (no black bars from body centering)
+    this.canvas.width=vw*dpr;
+    this.canvas.height=vh*dpr;
+    this.canvas.style.width=vw+'px';
+    this.canvas.style.height=vh+'px';
     this._dpr=dpr;
     this._cssScale=s;
+    this._isPortrait=isPortrait;
+    // Virtual canvas height: how many logical units tall the canvas really is
+    this._vch=vh/s;
     this.ctx.imageSmoothingEnabled=false;
-    // Rebuild background at new resolution
     if(this._ready)this.bg=buildBackground();
-    if(this.input)this.input._scale=s;
+    if(this.input){
+      this.input._scale=s;
+      this.input._portrait=isPortrait;
+      this.input._vch=this._vch;
+    }
   }
   _initGame(){
     this.player=new Player(W/2,H/2);
@@ -1675,10 +1709,15 @@ class Game {
   }
   render(){
     const ctx=this.ctx;
-    // Apply DPR + CSS scale so all drawing uses CW/CH logical coords
     const dpr=this._dpr||1,s=this._cssScale||1;
+    // Apply DPR + CSS scale so all drawing uses CW/CH logical coords
     ctx.setTransform(dpr*s,0,0,dpr*s,0,0);
     ctx.imageSmoothingEnabled=false;
+    // Fill the area below game world (portrait controls zone) with black
+    if(this._isPortrait&&this._vch>CH){
+      ctx.fillStyle='#000';
+      ctx.fillRect(0,CH,CW,this._vch-CH);
+    }
     const playing=this.state==='PLAYING'||this.state==='LEVEL_COMPLETE'||
                   this.state==='GAME_OVER'||this.state==='VICTORY';
     ctx.save();ctx.scale(2,2);
