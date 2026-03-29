@@ -4,32 +4,64 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a collection of self-contained browser games — each game is a single HTML file with no external dependencies, no build step, and no package manager. Open any `.html` file directly in a browser to run it.
+A self-contained browser shooter game — a single HTML file with no external dependencies, no build step, and no package manager. Open `index.html` directly in a browser to run it.
 
-## Running the Games
+## Running the Game
 
 ```bash
-open shooter.html
-open tictactoe.html
+open index.html
 ```
 
 ## Architecture
 
-All games follow the same pattern:
+**Single HTML file** — inline CSS + inline JavaScript, zero external dependencies. Vanilla ES6 classes, HTML5 Canvas rendering.
 
-- **Single HTML file** — inline CSS + inline JavaScript, zero external dependencies
-- **HTML5 Canvas** for game rendering (shooter), or DOM elements (tictactoe)
-- **Vanilla ES6** — classes, arrow functions, `const`/`let`, no frameworks
+### Coordinate Systems
 
-### shooter.html
+Two coordinate spaces coexist — this is the most important thing to understand:
 
-Top-down 2D retro shooter. Key architecture:
+- **Game space**: `W=320, H=240` — all game logic (positions, collision, enemy AI) uses these coordinates.
+- **Canvas space**: `CW=640, CH=480` — the actual canvas resolution. `render()` calls `ctx.scale(2,2)` before drawing game world, then `ctx.restore()` for HUD/overlays.
+- **CSS space**: the canvas is scaled further by `input._scale` to fit the browser window.
+- Mouse and touch coordinates must be divided by `_scale` (CSS→canvas) and then by `2` (canvas→game) to get game coordinates.
 
-- **Logical resolution**: 320×240 game coordinates, rendered to a 640×480 canvas via `ctx.scale(2, 2)` in `render()`. All game logic uses W=320, H=240.
-- **Mouse coordinates** must be divided by both the CSS scale factor (`input._scale`) and by 2 (for the canvas→game coordinate conversion).
-- **Game loop**: fixed-timestep accumulator (`STEP = 1000/60`), decoupled from rendering via `requestAnimationFrame`.
-- **Render layers**: game world (inside `ctx.scale(2,2)`) → CRT overlay → HUD → state screens. HUD and overlays use `CANVAS_W`/`CANVAS_H` (640×480) coordinates directly.
-- **Classes**: `InputHandler`, `Player`, `GruntEnemy` / `TankEnemy` / `FastEnemy` / `ShooterEnemy` (all extend `Enemy`), `Bullet`, `Particle`, `LevelManager`, `RetroAudio`, `Game`.
-- **`game`** is a global variable referenced by `LevelManager` for audio calls.
-- **Audio**: procedural Web Audio API beeps, created on first user interaction to satisfy browser autoplay policy.
-- **Persistence**: `localStorage` key `retro_assault_hi` for high score only.
+### Game Loop
+
+Fixed-timestep accumulator (`STEP = 1000/60`), decoupled from rendering via `requestAnimationFrame`. `update()` receives `dt` in seconds.
+
+### Render Layers (in order)
+
+1. `ctx.scale(2,2)` → background, bullets, particles, pickups, enemies, player, crosshair
+2. `ctx.restore()` → CRT scanline overlay
+3. HUD (`drawHUD`) — drawn in CW/CH (640×480) coords
+4. Virtual controls (`drawVirtualControls`) — drawn in CW/CH coords
+5. State overlays (start screen, level complete, game over, victory)
+
+### Classes
+
+| Class | Purpose |
+|---|---|
+| `InputHandler` | Keyboard, mouse, and touch (joystick + right-side aim/fire). `isFiring` getter for held touch. `pendingWeaponSwitch` for touch weapon buttons. |
+| `Player` | Movement, shooting, ammo tracking, weapon switching (keys 1–8). |
+| `Enemy` (base) | Chase-player AI, `frozen`/`slowFactor` for freeze weapon effect. |
+| `GruntEnemy`, `TankEnemy`, `FastEnemy`, `ShooterEnemy` | Extend `Enemy`. |
+| `Boss1`–`Boss6` | 3-phase bosses; update signature is `(dt, player, bullets, enemies)`. |
+| `Bullet` | Supports `explosive`, `piercing`, `bouncing` (plasma), `freezing`, `flame` (range-limited). Bouncing bullets use `vx`/`vy` instead of angle. |
+| `LevelManager` | Spawn queue with per-entry delays. Boss levels: 3, 6, 8, 11, 13, 15. Bonus rounds: 4, 12. |
+| `RetroAudio` | Procedural Web Audio API; initialized on first user interaction. |
+| `Game` | Owns all state arrays (`bullets`, `enemies`, `particles`, `pickups`). Global `game` variable used by `LevelManager` for audio calls. |
+
+### Weapons (8 total)
+
+`pistol` (infinite), `shotgun`, `smg`, `rocket` (explosive), `laser` (piercing), `plasma` (bouncing, high dmg), `freeze` (slows enemies to 30% for 2s), `flame` (short range, 3-shot spread). Keys 1–8.
+
+### Mobile Touch Controls
+
+- Left 1/3 of screen → virtual joystick (translates to WASD keys)
+- Right 2/3 → aim and auto-fire (held touch = continuous fire)
+- Bottom strip → 8 weapon buttons (`_checkWeaponButtons` in `InputHandler`)
+- Joystick and weapon buttons drawn by `drawVirtualControls(ctx, game)`
+
+### Persistence
+
+`localStorage` key `retro_assault_hi` — high score only.

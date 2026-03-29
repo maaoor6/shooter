@@ -6,8 +6,22 @@
   <title>RETRO ASSAULT</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; display: flex; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; touch-action: none; user-select: none; }
-    canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; cursor: none; touch-action: none; }
+    html, body {
+      background: #000;
+      width: 100%; height: 100%;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none; -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body { display: flex; align-items: center; justify-content: center; }
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      cursor: none;
+      touch-action: none;
+    }
   </style>
 </head>
 <body>
@@ -45,13 +59,18 @@ function circlehit(ax,ay,bx,by,r){
 }
 
 // ── Input ─────────────────────────────────────────────────────────────────────
+// Joy max throw as fraction of canvas display width (shared by input & draw)
+const JOY_R = 0.075; // throw radius as fraction of CW
+
 class InputHandler {
   constructor(canvas) {
     this.keys=new Set(); this.mouse={x:W/2,y:H/2};
     this.clicks=[]; this.anyKey=false; this._scale=1;
     this.isMobile='ontouchstart' in window||navigator.maxTouchPoints>0;
+    // Left joystick: movement
     this.joystick={active:false,baseCSS:{x:0,y:0},knobCSS:{x:0,y:0},id:null};
-    this.rightTouch={active:false,firing:false,id:null};
+    // Right joystick: aim + fire
+    this.rightJoy={active:false,baseCSS:{x:0,y:0},knobCSS:{x:0,y:0},id:null,angle:0,magnitude:0};
     this.pendingWeaponSwitch=null;
 
     window.addEventListener('keydown',e=>{
@@ -76,26 +95,32 @@ class InputHandler {
     canvas.addEventListener('touchend',e=>{e.preventDefault();this._onTouchEnd(e);},{passive:false});
     canvas.addEventListener('touchcancel',e=>{e.preventDefault();this._onTouchEnd(e);},{passive:false});
   }
-  get isFiring(){return this.rightTouch.firing;}
+  // Fire whenever right joystick is deflected past 15%
+  get isFiring(){return this.rightJoy.active&&this.rightJoy.magnitude>0.15;}
   _pos(touch,canvas){
     const r=canvas.getBoundingClientRect();
     return {cssX:touch.clientX-r.left,cssY:touch.clientY-r.top,
       gameX:(touch.clientX-r.left)/this._scale/2,
-      gameY:(touch.clientY-r.top)/this._scale/2,cw:r.width};
+      gameY:(touch.clientY-r.top)/this._scale/2,cw:r.width,ch:r.height};
   }
   _onTouchStart(e,canvas){
-    this.anyKey=true;
-    this.isMobile=true;
+    this.anyKey=true; this.isMobile=true;
     for(const t of e.changedTouches){
       const p=this._pos(t,canvas);
+      // Weapon buttons hit test (bottom-center strip in CW/CH canvas space)
       if(this._checkWeaponButtons(p.gameX*2,p.gameY*2))continue;
-      if(p.cssX<p.cw/3&&!this.joystick.active){
+      if(p.cssX<p.cw*0.5&&!this.joystick.active){
+        // Left half → movement joystick
         this.joystick.active=true;this.joystick.id=t.identifier;
         this.joystick.baseCSS={x:p.cssX,y:p.cssY};
         this.joystick.knobCSS={x:p.cssX,y:p.cssY};
-      } else if(p.cssX>=p.cw/3&&!this.rightTouch.active){
-        this.rightTouch.active=true;this.rightTouch.firing=true;this.rightTouch.id=t.identifier;
-        this.mouse.x=p.gameX;this.mouse.y=p.gameY;
+      } else if(p.cssX>=p.cw*0.5&&!this.rightJoy.active){
+        // Right half → aim joystick
+        this.rightJoy.active=true;this.rightJoy.id=t.identifier;
+        this.rightJoy.baseCSS={x:p.cssX,y:p.cssY};
+        this.rightJoy.knobCSS={x:p.cssX,y:p.cssY};
+        this.rightJoy.magnitude=0;
+        // Click for menu/any-key detection
         this.clicks.push({x:p.gameX,y:p.gameY});
       }
     }
@@ -106,18 +131,20 @@ class InputHandler {
       if(t.identifier===this.joystick.id){
         this.joystick.knobCSS={x:p.cssX,y:p.cssY};
         const dx=p.cssX-this.joystick.baseCSS.x,dy=p.cssY-this.joystick.baseCSS.y;
-        const mag=Math.sqrt(dx*dx+dy*dy),maxT=p.cw*0.1;
+        const mag=Math.sqrt(dx*dx+dy*dy),maxT=p.cw*JOY_R;
         if(mag>6){
           const nx=dx/Math.max(mag,maxT),ny=dy/Math.max(mag,maxT);
-          if(nx<-0.3)this.keys.add('KeyA');else this.keys.delete('KeyA');
-          if(nx>0.3)this.keys.add('KeyD');else this.keys.delete('KeyD');
-          if(ny<-0.3)this.keys.add('KeyW');else this.keys.delete('KeyW');
-          if(ny>0.3)this.keys.add('KeyS');else this.keys.delete('KeyS');
-        } else {
-          ['KeyA','KeyD','KeyW','KeyS'].forEach(k=>this.keys.delete(k));
-        }
-      } else if(t.identifier===this.rightTouch.id){
-        this.mouse.x=p.gameX;this.mouse.y=p.gameY;
+          if(nx<-0.28)this.keys.add('KeyA');else this.keys.delete('KeyA');
+          if(nx>0.28) this.keys.add('KeyD');else this.keys.delete('KeyD');
+          if(ny<-0.28)this.keys.add('KeyW');else this.keys.delete('KeyW');
+          if(ny>0.28) this.keys.add('KeyS');else this.keys.delete('KeyS');
+        } else {['KeyA','KeyD','KeyW','KeyS'].forEach(k=>this.keys.delete(k));}
+      } else if(t.identifier===this.rightJoy.id){
+        this.rightJoy.knobCSS={x:p.cssX,y:p.cssY};
+        const dx=p.cssX-this.rightJoy.baseCSS.x,dy=p.cssY-this.rightJoy.baseCSS.y;
+        const mag=Math.sqrt(dx*dx+dy*dy),maxT=p.cw*JOY_R;
+        this.rightJoy.magnitude=Math.min(mag/maxT,1);
+        if(mag>5)this.rightJoy.angle=Math.atan2(dy,dx);
       }
     }
   }
@@ -126,17 +153,20 @@ class InputHandler {
       if(t.identifier===this.joystick.id){
         this.joystick.active=false;this.joystick.id=null;
         ['KeyA','KeyD','KeyW','KeyS'].forEach(k=>this.keys.delete(k));
-      } else if(t.identifier===this.rightTouch.id){
-        this.rightTouch.active=false;this.rightTouch.firing=false;this.rightTouch.id=null;
+      } else if(t.identifier===this.rightJoy.id){
+        this.rightJoy.active=false;this.rightJoy.id=null;this.rightJoy.magnitude=0;
       }
     }
   }
   _checkWeaponButtons(hx,hy){
+    // hx,hy in CW/CH canvas coords (0..640, 0..480)
     const slots=Object.keys(WEAPONS);
+    const btnW=38,gap=3,totalW=slots.length*(btnW+gap)-gap;
+    const startX=(CW-totalW)/2,startY=CH-36,btnH=30;
     for(let i=0;i<slots.length;i++){
-      const sw=slots[i];
-      const bx=4+i*79,by=CH-58,bw=74,bh=48;
-      if(hx>=bx&&hx<=bx+bw&&hy>=by&&hy<=by+bh){this.pendingWeaponSwitch=sw;return true;}
+      if(hx>=startX+i*(btnW+gap)&&hx<=startX+i*(btnW+gap)+btnW&&hy>=startY&&hy<=startY+btnH){
+        this.pendingWeaponSwitch=slots[i];return true;
+      }
     }
     return false;
   }
@@ -326,7 +356,31 @@ class Player {
     this.animTimer+=dt;
     if(this.animTimer>=0.11){this.animTimer=0;this.animFrame^=1;}
     this.x=clamp(this.x,8,W-8);this.y=clamp(this.y,8,H-8);
-    this.angle=Math.atan2(input.mouse.y-this.y,input.mouse.x-this.x);
+    // Aim: right joystick on mobile, mouse on desktop
+    if(input.isMobile&&input.rightJoy.active&&input.rightJoy.magnitude>0.1){
+      this.angle=input.rightJoy.angle;
+    } else {
+      this.angle=Math.atan2(input.mouse.y-this.y,input.mouse.x-this.x);
+    }
+    // Aim assist (mobile only): gently snap toward nearest enemy in cone
+    if(input.isMobile&&game&&game.enemies&&game.enemies.length>0){
+      const ax=Math.cos(this.angle),ay=Math.sin(this.angle);
+      let bestDot=0.6,bestAngle=this.angle; // 0.6 ≈ within ~53°
+      for(const e of game.enemies){
+        if(e.dead)continue;
+        const ex=e.x-this.x,ey=e.y-this.y;
+        const dist=Math.sqrt(ex*ex+ey*ey);
+        if(dist<8||dist>200)continue;
+        const dot=ax*(ex/dist)+ay*(ey/dist);
+        if(dot>bestDot){bestDot=dot;bestAngle=Math.atan2(ey,ex);}
+      }
+      if(bestAngle!==this.angle){
+        let diff=bestAngle-this.angle;
+        while(diff>Math.PI)diff-=Math.PI*2;
+        while(diff<-Math.PI)diff+=Math.PI*2;
+        this.angle+=diff*0.18; // 18% blend toward target
+      }
+    }
     this.shootCooldown-=dt;
     if(this.invincible>0)this.invincible-=dt;
     if(this.shield>0)this.shield-=dt;
@@ -1169,22 +1223,17 @@ function drawHUD(ctx,g){
   const w=g.player.weapon;const wdef=WEAPONS[w];
   ctx.font='bold 12px monospace';ctx.fillStyle=wdef.col;ctx.fillText('['+wdef.name+']',4,CH-48);
   if(w!=='pistol'){ctx.font='10px monospace';ctx.fillStyle=PAL.GREY;ctx.fillText('AMMO: '+g.player.ammo[w],4,CH-34);}
-  // 8-weapon slots
-  const slots=Object.keys(WEAPONS);
-  slots.forEach((sw,i)=>{
-    const has=sw==='pistol'||(g.player.ammo[sw]>0);
-    const active=g.player.weapon===sw;
-    // mobile: draw button bg
-    if(g.input&&g.input.isMobile){
-      ctx.fillStyle=active?'rgba(255,255,255,0.2)':(has?'rgba(255,255,255,0.05)':'rgba(0,0,0,0)');
-      ctx.fillRect(4+i*79,CH-44,74,20);
-      ctx.strokeStyle=active?wdef.col:(has?PAL.DARKGREY:PAL.BLACK);
-      ctx.lineWidth=1;ctx.strokeRect(4+i*79,CH-44,74,20);
-    }
-    ctx.font=(active?'bold ':'')+8+'px monospace';
-    ctx.fillStyle=active?WEAPONS[sw].col:(has?PAL.DARKGREY:PAL.BLACK);
-    ctx.fillText((i+1)+':'+WEAPONS[sw].name.slice(0,3),8+i*79,CH-38);
-  });
+  // 8-weapon slots (desktop only — mobile draws them in drawVirtualControls)
+  if(!g.input||!g.input.isMobile){
+    const slots=Object.keys(WEAPONS);
+    slots.forEach((sw,i)=>{
+      const has=sw==='pistol'||(g.player.ammo[sw]>0);
+      const active=g.player.weapon===sw;
+      ctx.font=(active?'bold ':'')+8+'px monospace';
+      ctx.fillStyle=active?WEAPONS[sw].col:(has?PAL.DARKGREY:'#111');
+      ctx.fillText((i+1)+':'+WEAPONS[sw].name.slice(0,3),8+i*79,CH-38);
+    });
+  }
   if(g.combo>1){
     ctx.font='bold '+(10+g.combo*2)+'px monospace';
     const comboAlpha=Math.min(1,g.comboTimer/1.5);
@@ -1224,46 +1273,145 @@ function drawHUD(ctx,g){
 function drawVirtualControls(ctx,g){
   const input=g.input;
   if(!input||!input.isMobile)return;
-  // portrait warning
+  // Portrait warning
   if(window.innerHeight>window.innerWidth*1.2){
-    ctx.fillStyle='rgba(0,0,0,0.8)';ctx.fillRect(0,0,CW,CH);
+    ctx.fillStyle='rgba(0,0,0,0.88)';ctx.fillRect(0,0,CW,CH);
     ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.font='bold 22px monospace';ctx.fillStyle=PAL.YELLOW;ctx.fillText('ROTATE DEVICE',CW/2,CH/2-16);
-    ctx.font='13px monospace';ctx.fillStyle=PAL.WHITE;ctx.fillText('landscape for best play',CW/2,CH/2+14);
+    ctx.font='bold 26px monospace';ctx.fillStyle=PAL.YELLOW;
+    ctx.fillText('ROTATE DEVICE',CW/2,CH/2-18);
+    ctx.font='14px monospace';ctx.fillStyle=PAL.WHITE;
+    ctx.fillText('landscape for best play',CW/2,CH/2+18);
     ctx.textAlign='left';ctx.textBaseline='top';return;
   }
   const s=input._scale;
-  const jb=input.joystick;
-  const joyX=jb.active?(jb.baseCSS.x/s):(CW*0.12);
-  const joyY=jb.active?(jb.baseCSS.y/s):(CH*0.78);
-  const rawKX=jb.active?(jb.knobCSS.x/s):joyX;
-  const rawKY=jb.active?(jb.knobCSS.y/s):joyY;
-  const dkx=rawKX-joyX,dky=rawKY-joyY;
-  const dkd=Math.sqrt(dkx*dkx+dky*dky),maxR=38;
-  const knobX=dkd>maxR?joyX+dkx/dkd*maxR:rawKX;
-  const knobY=dkd>maxR?joyY+dky/dkd*maxR:rawKY;
-  // joystick base
-  ctx.globalAlpha=0.45;ctx.fillStyle=PAL.WHITE;
-  ctx.beginPath();ctx.arc(joyX,joyY,42,0,Math.PI*2);ctx.fill();
-  ctx.globalAlpha=0.7;ctx.strokeStyle=PAL.WHITE;ctx.lineWidth=3;
-  ctx.beginPath();ctx.arc(joyX,joyY,42,0,Math.PI*2);ctx.stroke();
-  // knob
-  ctx.globalAlpha=0.85;ctx.fillStyle=PAL.WHITE;
-  ctx.beginPath();ctx.arc(knobX,knobY,20,0,Math.PI*2);ctx.fill();
-  // fire button (bottom-right)
-  const fx=CW*0.82,fy=CH*0.78,fr=38;
-  const firing=input.rightTouch.firing;
-  ctx.globalAlpha=firing?0.85:0.45;
-  ctx.fillStyle=firing?PAL.RED:PAL.ORANGE;
-  ctx.beginPath();ctx.arc(fx,fy,fr,0,Math.PI*2);ctx.fill();
-  ctx.globalAlpha=firing?1:0.75;
-  ctx.strokeStyle=PAL.WHITE;ctx.lineWidth=3;
-  ctx.beginPath();ctx.arc(fx,fy,fr,0,Math.PI*2);ctx.stroke();
-  ctx.globalAlpha=1;
-  ctx.fillStyle=PAL.WHITE;ctx.font='bold 14px monospace';
-  ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText('FIRE',fx,fy);
-  ctx.textAlign='left';ctx.textBaseline='top';
+  const maxR=CW*JOY_R; // max throw in canvas coords
+
+  // ── Draw one joystick ────────────────────────────────────────────────────────
+  function drawJoystick(joy, defX, defY, ringCol, label, isFireJoy){
+    const baseX=joy.active?(joy.baseCSS.x/s):defX;
+    const baseY=joy.active?(joy.baseCSS.y/s):defY;
+    const rawKX=joy.active?(joy.knobCSS.x/s):baseX;
+    const rawKY=joy.active?(joy.knobCSS.y/s):baseY;
+    const dkx=rawKX-baseX,dky=rawKY-baseY;
+    const dkd=Math.sqrt(dkx*dkx+dky*dky);
+    const knobX=dkd>maxR?baseX+dkx/dkd*maxR:rawKX;
+    const knobY=dkd>maxR?baseY+dky/dkd*maxR:rawKY;
+    const active=joy.active;
+    const firing=isFireJoy&&input.isFiring;
+
+    // Soft glow behind base
+    ctx.globalAlpha=0.1;
+    ctx.fillStyle=ringCol;
+    ctx.beginPath();ctx.arc(baseX,baseY,maxR+22,0,Math.PI*2);ctx.fill();
+
+    // Base plate (dark fill + colored ring)
+    ctx.globalAlpha=active?0.45:0.28;
+    ctx.fillStyle='#0a0a18';
+    ctx.beginPath();ctx.arc(baseX,baseY,maxR+10,0,Math.PI*2);ctx.fill();
+
+    ctx.globalAlpha=active?0.85:0.45;
+    ctx.strokeStyle=firing?PAL.RED:ringCol;
+    ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(baseX,baseY,maxR+10,0,Math.PI*2);ctx.stroke();
+
+    // Inner ring guide
+    ctx.globalAlpha=0.18;
+    ctx.strokeStyle=ringCol;ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(baseX,baseY,maxR*0.5,0,Math.PI*2);ctx.stroke();
+
+    // Direction line when active
+    if(active&&dkd>5){
+      ctx.globalAlpha=0.4;
+      ctx.strokeStyle=ringCol;ctx.lineWidth=1.5;
+      ctx.setLineDash([3,4]);
+      ctx.beginPath();ctx.moveTo(baseX,baseY);ctx.lineTo(knobX,knobY);ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Knob shadow
+    ctx.globalAlpha=0.4;
+    ctx.fillStyle='#000';
+    ctx.beginPath();ctx.arc(knobX+1.5,knobY+1.5,20,0,Math.PI*2);ctx.fill();
+
+    // Knob body
+    ctx.globalAlpha=active?0.95:0.65;
+    ctx.fillStyle=firing?PAL.RED:ringCol;
+    ctx.beginPath();ctx.arc(knobX,knobY,20,0,Math.PI*2);ctx.fill();
+
+    // Knob highlight
+    ctx.globalAlpha=0.35;
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(knobX-5,knobY-5,9,0,Math.PI*2);ctx.fill();
+
+    // Knob label
+    ctx.globalAlpha=active?1:0.6;
+    ctx.fillStyle=PAL.WHITE;
+    ctx.font='bold 8px monospace';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(label,knobX,knobY);
+
+    ctx.globalAlpha=1;ctx.textAlign='left';ctx.textBaseline='top';
+  }
+
+  // Left joystick — movement (bottom-left)
+  drawJoystick(input.joystick, CW*0.13, CH*0.80, PAL.CYAN, 'MOVE', false);
+  // Right joystick — aim + fire (bottom-right)
+  drawJoystick(input.rightJoy, CW*0.87, CH*0.80, PAL.ORANGE, input.isFiring?'FIRE':'AIM', true);
+
+  // ── Weapon buttons (bottom-center strip) ────────────────────────────────────
+  const slots=Object.keys(WEAPONS);
+  const btnW=38,gap=3,totalW=slots.length*(btnW+gap)-gap;
+  const startX=(CW-totalW)/2,startY=CH-36,btnH=30,r2=4;
+
+  slots.forEach((sw,i)=>{
+    const has=sw==='pistol'||(g.player&&g.player.ammo[sw]>0);
+    const active=g.player&&g.player.weapon===sw;
+    const wdef=WEAPONS[sw];
+    const bx=startX+i*(btnW+gap),by=startY;
+
+    // Button bg
+    ctx.globalAlpha=active?0.88:(has?0.38:0.12);
+    ctx.fillStyle=active?wdef.col:(has?'#1a1a2e':'#0a0a0a');
+    ctx.beginPath();
+    ctx.moveTo(bx+r2,by);ctx.lineTo(bx+btnW-r2,by);ctx.arcTo(bx+btnW,by,bx+btnW,by+r2,r2);
+    ctx.lineTo(bx+btnW,by+btnH-r2);ctx.arcTo(bx+btnW,by+btnH,bx+btnW-r2,by+btnH,r2);
+    ctx.lineTo(bx+r2,by+btnH);ctx.arcTo(bx,by+btnH,bx,by+btnH-r2,r2);
+    ctx.lineTo(bx,by+r2);ctx.arcTo(bx,by,bx+r2,by,r2);ctx.closePath();ctx.fill();
+
+    // Border
+    ctx.globalAlpha=active?1:(has?0.55:0.18);
+    ctx.strokeStyle=active?'#fff':(has?wdef.col:PAL.DARKGREY);
+    ctx.lineWidth=active?1.5:0.75;
+    ctx.beginPath();
+    ctx.moveTo(bx+r2,by);ctx.lineTo(bx+btnW-r2,by);ctx.arcTo(bx+btnW,by,bx+btnW,by+r2,r2);
+    ctx.lineTo(bx+btnW,by+btnH-r2);ctx.arcTo(bx+btnW,by+btnH,bx+btnW-r2,by+btnH,r2);
+    ctx.lineTo(bx+r2,by+btnH);ctx.arcTo(bx,by+btnH,bx,by+btnH-r2,r2);
+    ctx.lineTo(bx,by+r2);ctx.arcTo(bx,by,bx+r2,by,r2);ctx.closePath();ctx.stroke();
+
+    // Number key
+    ctx.globalAlpha=active?0.6:(has?0.4:0.15);
+    ctx.fillStyle=active?PAL.BLACK:PAL.GREY;
+    ctx.font='6px monospace';
+    ctx.textAlign='left';ctx.textBaseline='top';
+    ctx.fillText(i+1,bx+2,by+2);
+
+    // Weapon name
+    ctx.globalAlpha=active?1:(has?0.8:0.2);
+    ctx.fillStyle=active?PAL.BLACK:wdef.col;
+    ctx.font=(active?'bold ':'')+7+'px monospace';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(sw.slice(0,4).toUpperCase(),bx+btnW/2,by+btnH*0.42);
+
+    // Ammo count
+    if(sw!=='pistol'&&has&&g.player){
+      ctx.globalAlpha=active?0.75:0.55;
+      ctx.fillStyle=active?PAL.BLACK:PAL.WHITE;
+      ctx.font='6px monospace';
+      ctx.fillText(g.player.ammo[sw],bx+btnW/2,by+btnH*0.78);
+    }
+
+    ctx.globalAlpha=1;ctx.textAlign='left';ctx.textBaseline='top';
+  });
 }
 
 // ── Overlays ──────────────────────────────────────────────────────────────────
@@ -1342,20 +1490,30 @@ class Game {
   constructor(){
     this.canvas=document.getElementById('game');
     this.ctx=this.canvas.getContext('2d');
-    this.canvas.width=CW;this.canvas.height=CH;
-    this.ctx.imageSmoothingEnabled=false;
     this.state='START';this.last=0;this.accum=0;this.STEP=1000/60;
+    this._dpr=1;this._cssScale=1;this._ready=false;
     this.input=new InputHandler(this.canvas);
     this._setupScale();
+    this._ready=true;
     window.addEventListener('resize',()=>this._setupScale());
     this.bg=buildBackground();this.audio=null;
     this.highScore=parseInt(localStorage.getItem('retro_assault_hi')||'0');
     this._initGame();
   }
   _setupScale(){
+    const dpr=window.devicePixelRatio||1;
     const s=Math.min(window.innerWidth/CW,window.innerHeight/CH);
-    this.canvas.style.width=Math.floor(CW*s)+'px';
-    this.canvas.style.height=Math.floor(CH*s)+'px';
+    const dispW=Math.floor(CW*s),dispH=Math.floor(CH*s);
+    // Canvas buffer = display size × DPR for Retina/HiDPI sharpness
+    this.canvas.width=dispW*dpr;
+    this.canvas.height=dispH*dpr;
+    this.canvas.style.width=dispW+'px';
+    this.canvas.style.height=dispH+'px';
+    this._dpr=dpr;
+    this._cssScale=s;
+    this.ctx.imageSmoothingEnabled=false;
+    // Rebuild background at new resolution
+    if(this._ready)this.bg=buildBackground();
     if(this.input)this.input._scale=s;
   }
   _initGame(){
@@ -1517,6 +1675,9 @@ class Game {
   }
   render(){
     const ctx=this.ctx;
+    // Apply DPR + CSS scale so all drawing uses CW/CH logical coords
+    const dpr=this._dpr||1,s=this._cssScale||1;
+    ctx.setTransform(dpr*s,0,0,dpr*s,0,0);
     ctx.imageSmoothingEnabled=false;
     const playing=this.state==='PLAYING'||this.state==='LEVEL_COMPLETE'||
                   this.state==='GAME_OVER'||this.state==='VICTORY';
