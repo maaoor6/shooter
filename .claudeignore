@@ -1,0 +1,29 @@
+# התעלמות מתיקיות של כלי פיתוח ו-IDE
+.vscode/
+.idea/
+.git/
+node_modules/
+
+# התעלמות מקבצי לוג וזמניים
+*.log
+.DS_Store
+Thumbs.db
+
+# התעלמות מתיקיות בניה (Build) אם קיימות
+dist/
+build/
+out/
+
+# הגבלה ספציפית: אל תסרוק תמונות או נכסים כבדים (חוסך המון טוקנים)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.mp4
+*.pdf
+
+# התעלמות מקבצי קונפיגורציה שלא רלוונטיים לקוד ה-HTML/JS
+package-lock.json
+yarn.lock
