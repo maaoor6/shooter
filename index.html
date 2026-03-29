@@ -1532,22 +1532,26 @@ class Game {
       // Landscape: fit entire game into viewport
       s=Math.min(vw/CW,vh/CH);
     }
-    // Canvas = full viewport (no black bars from body centering)
-    this.canvas.width=vw*dpr;
-    this.canvas.height=vh*dpr;
-    this.canvas.style.width=vw+'px';
-    this.canvas.style.height=vh+'px';
+    // vch = total logical canvas height (game area + controls zone in portrait)
+    const vch=isPortrait?Math.round(vh/s):CH;
+    // Canvas buffer = exact logical size × dpr (integer scale — no sub-pixel blur)
+    this.canvas.width=CW*dpr;
+    this.canvas.height=vch*dpr;
+    // CSS: scale canvas to fill screen; center horizontally in landscape
+    this.canvas.style.width=Math.round(CW*s)+'px';
+    this.canvas.style.height=Math.round(vch*s)+'px';
+    this.canvas.style.left=Math.round((vw-CW*s)/2)+'px';
+    this.canvas.style.top='0px';
     this._dpr=dpr;
     this._cssScale=s;
     this._isPortrait=isPortrait;
-    // Virtual canvas height: how many logical units tall the canvas really is
-    this._vch=vh/s;
+    this._vch=vch;
     this.ctx.imageSmoothingEnabled=false;
     if(this._ready)this.bg=buildBackground();
     if(this.input){
       this.input._scale=s;
       this.input._portrait=isPortrait;
-      this.input._vch=this._vch;
+      this.input._vch=vch;
     }
   }
   _initGame(){
@@ -1709,9 +1713,9 @@ class Game {
   }
   render(){
     const ctx=this.ctx;
-    const dpr=this._dpr||1,s=this._cssScale||1;
-    // Apply DPR + CSS scale so all drawing uses CW/CH logical coords
-    ctx.setTransform(dpr*s,0,0,dpr*s,0,0);
+    const dpr=this._dpr||1;
+    // Integer DPR scale only — CSS handles the rest via image-rendering:pixelated
+    ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.imageSmoothingEnabled=false;
     // Fill the area below game world (portrait controls zone) with black
     if(this._isPortrait&&this._vch>CH){
