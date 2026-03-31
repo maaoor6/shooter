@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+.AppleDouble
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Claude Code
+.claudeignore
+.claude/
+
+# Logs
+*.log
