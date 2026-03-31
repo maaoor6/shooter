@@ -1,20 +1,44 @@
-# 🎯 Shooter Project
+# RETRO ASSAULT
 
-A fast-paced shooter game developed as part of my coding journey. This project demonstrates core game mechanics, input handling, and object interactions.
+A fast-paced retro shooter game that runs entirely in the browser — no install, no build step, no dependencies.
 
-## 🚀 Features
-* **Player Movement:** Smooth controls for navigating the game world.
-* **Combat System:** Projectile firing and collision detection.
-* **Enemy AI:** Basic logic for enemy behavior and spawning.
-* **Score Tracking:** Keep track of your performance in real-time.
+## Play
 
-## 🛠️ Tech Stack
-* **Language:** C#
-* **Framework:** [Unity / .NET - בחר את הרלוונטי]
-* **Version Control:** Git & GitHub
+Open `index.html` in any modern browser:
 
-## 💻 Installation & Setup
+```bash
+open index.html
+```
 
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/maaoor6/shooter.git](https://github.com/maaoor6/shooter.git)
+## Tech Stack
+
+- **Vanilla JavaScript (ES6)** — zero frameworks
+- **HTML5 Canvas** — all rendering via 2D context
+- **Web Audio API** — procedural SFX and chiptune BGM
+- **localStorage** — persists high score and mute setting
+
+## Features
+
+- 15 levels with 6 unique boss fights
+- 8 weapons: Pistol, Shotgun, SMG, Rocket, Laser, Plasma, Freeze, Flame
+- Screen shake, hit flash, particle effects
+- Chiptune background music with mute toggle (🔊 button, top-right)
+- "NEW RECORD!" banner on high score
+- Full mobile support: dual virtual joysticks, aim assist, full-screen display
+- Retina/HiDPI canvas — crisp on all screens
+
+## Controls
+
+| Input | Action |
+|---|---|
+| WASD / Arrow keys | Move |
+| Mouse | Aim |
+| Left click / hold | Fire |
+| 1–8 | Switch weapon |
+| R | Restart (Game Over screen) |
+| Left joystick (mobile) | Move |
+| Right joystick (mobile) | Aim + fire |
+
+## Version Control
+
+Git & GitHub
