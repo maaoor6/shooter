@@ -2223,12 +2223,12 @@ class Game {
   update(dt){
     switch(this.state){
       case 'START': {
-        if(this.input.isDown('KeyL')){this.input.consumeAnyKey();this._lbAutoTimer=999;this.state='LEADERBOARD';break;}
+        if(this.input.isDown('KeyL')){this.input.consumeAnyKey();this._lbAutoTimer=999;this._lbFetching=false;this.state='LEADERBOARD';break;}
         const startClicks=this.input.consumeClicks();
         let openedLb=false;
         for(const c of startClicks){
           if(c.x*2>=CW/2-70&&c.x*2<=CW/2+70&&c.y*2>=312&&c.y*2<=334){
-            this._lbAutoTimer=999;this.state='LEADERBOARD';openedLb=true;break;
+            this._lbAutoTimer=999;this._lbFetching=false;this.state='LEADERBOARD';openedLb=true;break;
           }
         }
         if(!openedLb&&(startClicks.length>0||this.input.consumeAnyKey())){this._initGame();this._initAudio();this.state='PLAYING';}
@@ -2345,9 +2345,15 @@ class Game {
       case 'NAME_INPUT': break; // handled by keyboard listener
       case 'LEADERBOARD':
         if(this._shake>0)this._shake=Math.max(0,this._shake-dt*6);
+        // Re-fetch leaderboard data each time the screen is entered (once per visit)
+        if(!this._lbFetching&&typeof window._fbFetchTop10==='function'){
+          this._lbFetching=true;
+          window._fbFetchTop10().then(rows=>{this._globalLB=rows;this._lbFetching=false;}).catch(()=>{this._lbFetching=false;});
+        }
         this._lbAutoTimer-=dt;
         if(this._lbAutoTimer<=0||this.input.consumeAnyKey()){
-          this.input.consumeClicks(); // drain stale clicks so START doesn't immediately activate
+          this.input.consumeClicks();
+          this._lbFetching=false;
           this.state='START';
         }
         break;
@@ -2512,6 +2518,7 @@ function submitName(){
   // Drain any stale key/click state so LEADERBOARD doesn't immediately skip
   game.input.consumeAnyKey();
   game.input.consumeClicks();
+  game._lbFetching=false; // reset so LEADERBOARD case re-fetches fresh data
   game.state='LEADERBOARD';
 }
 function skipName(){
