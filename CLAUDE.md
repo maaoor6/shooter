@@ -75,4 +75,39 @@ All boss `update()` signatures: `(dt, player, bullets, enemies)`.
 
 ## Persistence
 
-`localStorage` key `retro_assault_hi` — high score only.
+| Key | Contents |
+|---|---|
+| `retro_assault_hi` | High score (integer) |
+| `retro_assault_lb` | Local top-10 leaderboard JSON array |
+| `retro_achievements` | JSON array of unlocked achievement IDs |
+| `retro_mute` | Mute state boolean |
+
+## Firebase Global Leaderboard
+
+Architecture: **two separate script tags** in `index.html`.
+
+1. **Main `<script>`** (classic JS, no `type`) — all game code, runs synchronously.
+2. **`<script type="module">`** (ES module, at end of `<body>`) — Firebase SDK + two window globals:
+   - `window._fbSaveScore(name, score)` — sanitizes input, pushes to `/leaderboard` in Firebase
+   - `window._fbFetchTop10()` — returns Promise resolving to sorted top-10 array
+
+**Game integration:**
+- `_initGame()` calls `window._fbFetchTop10()` → stores result in `this._globalLB`
+- `_saveToLeaderboard(name)` calls `window._fbSaveScore()` after local save
+- `drawLeaderboard(ctx, g)` renders two columns: LOCAL (`g._leaderboard`) and GLOBAL (`g._globalLB`)
+
+**Security:** Firebase web config is public by design. Access control is via Firebase Security Rules, not API key secrecy. Input is sanitized (`replace(/[<>"'&]/g, '')`) before storage. Canvas rendering uses `ctx.fillText()` — never `innerHTML` — so XSS via leaderboard names is impossible.
+
+## InputHandler — Mouse Wheel
+
+`canvas.addEventListener('wheel', ...)` with `passive:false` (to allow `preventDefault`).
+Cycles `pendingWeaponSwitch` through `Object.keys(WEAPONS)` with wrap-around.
+`pendingWeaponSwitch` is consumed in `Player.update()`.
+
+## Enemy Repulsion Physics
+
+`Enemy.update()` runs a separation check after movement:
+- Computes distance to player
+- If `dist < (enemy.w + 10) * 0.5` → applies outward force proportional to overlap
+- Skipped for bosses (`isBoss=true`) to preserve boss fight feel
+- Prevents the "sticky enemy" bug where FastEnemies lock onto the player hitbox

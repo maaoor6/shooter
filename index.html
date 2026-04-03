@@ -125,6 +125,15 @@ class InputHandler {
     canvas.addEventListener('touchmove',e=>{e.preventDefault();this._onTouchMove(e,canvas);},{passive:false});
     canvas.addEventListener('touchend',e=>{e.preventDefault();this._onTouchEnd(e);},{passive:false});
     canvas.addEventListener('touchcancel',e=>{e.preventDefault();this._onTouchEnd(e);},{passive:false});
+    // Mouse wheel: cycle weapons with wrap-around
+    canvas.addEventListener('wheel',e=>{
+      e.preventDefault();
+      if(typeof game==='undefined'||game.state!=='PLAYING')return;
+      const slots=Object.keys(WEAPONS);
+      const cur=slots.indexOf(game.player.weapon);
+      const next=e.deltaY>0?(cur+1)%slots.length:(cur-1+slots.length)%slots.length;
+      this.pendingWeaponSwitch=slots[next];
+    },{passive:false});
   }
   // Fire whenever right joystick is deflected past 15%
   get isFiring(){return this.rightJoy.active&&this.rightJoy.magnitude>0.15;}
@@ -605,6 +614,18 @@ class Enemy {
     }
     this.animTimer+=dt;if(this.animTimer>=0.15){this.animTimer=0;this.animFrame^=1;}
     if(this.hitFlash>0)this.hitFlash-=dt;
+    // Repulsion: prevent sticking to player by pushing enemy back on overlap
+    if(!this.isBoss){
+      const rdx=this.x-player.x,rdy=this.y-player.y;
+      const rdist=Math.sqrt(rdx*rdx+rdy*rdy);
+      const minDist=(this.w+10)*0.5;
+      if(rdist<minDist&&rdist>0.01){
+        const force=(minDist-rdist)*10*dt;
+        this.x+=(rdx/rdist)*force;this.y+=(rdy/rdist)*force;
+      } else if(rdist<=0.01){
+        this.x+=Math.random()*4-2;this.y+=Math.random()*4-2;
+      }
+    }
   }
   takeDamage(dmg){
     this.hp-=dmg;this.hitFlash=0.08;
@@ -1983,36 +2004,59 @@ function drawNameInput(ctx,g){
 
 function drawLeaderboard(ctx,g){
   ctx.fillStyle='rgba(0,0,0,0.92)';ctx.fillRect(0,0,CW,CH);
-  ctx.textAlign='center';ctx.textBaseline='top';
-  ctx.font='bold 24px monospace';ctx.fillStyle='#FFDD00';ctx.fillText('HALL OF FAME',CW/2,18);
-  ctx.fillStyle='rgba(255,200,0,0.15)';ctx.fillRect(0,0,CW,44);
-  const lb=g._leaderboard||[];
-  const rowH=30,startY=50;
-  lb.slice(0,10).forEach((e,i)=>{
-    const y=startY+i*rowH;
-    const isCurrent=g._lbHighlight===i;
-    if(isCurrent){ctx.fillStyle='rgba(255,220,0,0.15)';ctx.fillRect(0,y,CW,rowH);}
-    const rankCol=i===0?'#FFD700':i===1?'#CCCCCC':i===2?'#CD7F32':PAL.GREY;
-    ctx.font='bold 13px monospace';ctx.fillStyle=rankCol;
-    ctx.textAlign='left';ctx.fillText('#'+(i+1),10,y+8);
-    ctx.fillStyle=isCurrent?PAL.YELLOW:PAL.WHITE;
-    const displayName=e.name.length>14?e.name.slice(0,13)+'…':e.name;
-    ctx.fillText(displayName,42,y+8);
-    ctx.textAlign='right';ctx.fillStyle=isCurrent?PAL.YELLOW:PAL.CYAN;
-    ctx.fillText(String(e.score).padStart(6,'0'),CW-50,y+8);
-    ctx.fillStyle=PAL.GREY;ctx.font='9px monospace';
-    ctx.fillText('LV'+e.level,CW-12,y+8);
-    // Divider
-    if(!isCurrent){ctx.fillStyle='rgba(255,255,255,0.05)';ctx.fillRect(0,y+rowH-1,CW,1);}
-  });
-  if(lb.length===0){
-    ctx.font='12px monospace';ctx.fillStyle=PAL.DARKGREY;ctx.textAlign='center';
-    ctx.fillText('No entries yet',CW/2,120);
+  ctx.textBaseline='top';
+
+  // ── Title ──
+  ctx.textAlign='center';
+  ctx.font='bold 18px monospace';ctx.fillStyle='#FFDD00';ctx.fillText('HALL OF FAME',CW/2,6);
+  ctx.fillStyle='rgba(255,200,0,0.12)';ctx.fillRect(0,0,CW,28);
+
+  // ── Two-column layout ──
+  const half=CW/2,rowH=22,startY=34;
+  const localLB=g._leaderboard||[];
+  const globalLB=g._globalLB||[];
+
+  // Column headers
+  ctx.font='bold 9px monospace';
+  ctx.fillStyle='#88CCFF';ctx.textAlign='center';ctx.fillText('◀ LOCAL',half/2,startY);
+  ctx.fillStyle='#FFAA44';ctx.fillText('GLOBAL ▶',half+half/2,startY);
+  ctx.fillStyle='rgba(255,255,255,0.1)';ctx.fillRect(half-0.5,28,1,CH-28);
+
+  // Helper to draw one column
+  function drawCol(list,offX,highlight){
+    list.slice(0,10).forEach((e,i)=>{
+      const y=startY+12+i*rowH;
+      const isCurrent=highlight===i;
+      if(isCurrent){ctx.fillStyle='rgba(255,220,0,0.18)';ctx.fillRect(offX,y-1,half,rowH);}
+      const rankCol=i===0?'#FFD700':i===1?'#CCCCCC':i===2?'#CD7F32':'#666';
+      ctx.font='bold 9px monospace';ctx.fillStyle=rankCol;
+      ctx.textAlign='left';ctx.fillText('#'+(i+1),offX+4,y+3);
+      const dn=e.name.length>10?e.name.slice(0,9)+'…':e.name;
+      ctx.fillStyle=isCurrent?'#FFD700':'#FFFFFF';
+      ctx.fillText(dn,offX+22,y+3);
+      ctx.textAlign='right';ctx.fillStyle=isCurrent?'#FFD700':'#00CCFF';
+      ctx.font='9px monospace';
+      ctx.fillText(String(e.score).padStart(6,'0'),offX+half-4,y+3);
+      if(!isCurrent){ctx.fillStyle='rgba(255,255,255,0.04)';ctx.fillRect(offX,y+rowH-1,half,1);}
+    });
+    if(list.length===0){
+      ctx.font='9px monospace';ctx.fillStyle='#444';ctx.textAlign='center';
+      ctx.fillText('No entries yet',offX+half/2,startY+40);
+    }
   }
-  const autoIn=g._lbAutoTimer||0;
+
+  drawCol(localLB,0,g._lbHighlight);
+  if(globalLB.length===0&&window._fbFetchTop10){
+    ctx.font='9px monospace';ctx.fillStyle='#555';ctx.textAlign='center';
+    ctx.fillText('Loading…',half+half/2,startY+40);
+  } else {
+    drawCol(globalLB,half,-1);
+  }
+
+  // ── Footer ──
   if(Math.floor(Date.now()/600)%2===0){
-    ctx.font='11px monospace';ctx.fillStyle=PAL.CYAN;ctx.textAlign='center';
-    ctx.fillText('PRESS ANY KEY TO CONTINUE',CW/2,CH-20);
+    ctx.font='10px monospace';ctx.fillStyle='#00CCFF';ctx.textAlign='center';
+    ctx.fillText('PRESS ANY KEY TO CONTINUE',CW/2,CH-14);
   }
   ctx.textAlign='left';
 }
@@ -2078,6 +2122,8 @@ class Game {
     this._unlockedAchievements=new Set(JSON.parse(localStorage.getItem('retro_achievements')||'[]'));
     this._leaderboard=JSON.parse(localStorage.getItem('retro_assault_lb')||'[]');
     this._pendingName='';this._lbHighlight=-1;this._lbAutoTimer=3;
+    this._globalLB=[];
+    if(window._fbFetchTop10)window._fbFetchTop10().then(rows=>{this._globalLB=rows;});
     this.level=new LevelManager(this);this.level.loadLevel(1);
   }
   _initAudio(){
@@ -2294,6 +2340,8 @@ class Game {
     this._leaderboard=this._leaderboard.slice(0,10);
     this._lbHighlight=this._leaderboard.findIndex(e=>e===entry);
     try{localStorage.setItem('retro_assault_lb',JSON.stringify(this._leaderboard));}catch(e){}
+    // Also push to Firebase global leaderboard
+    if(window._fbSaveScore)window._fbSaveScore(entry.name,entry.score);
   }
   render(){
     const ctx=this.ctx;
@@ -2428,6 +2476,57 @@ let _lastState='';
   if(s==='NAME_INPUT'){showNameInput();}
   else if(nameInput.style.display==='block'){hideNameInput();}
 })();
+</script>
+
+<!-- ── Firebase Global Leaderboard ─────────────────────────────────────────── -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, push, query, orderByChild, limitToLast, get }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC_nBGNgER977hWx8mCkkitV-PCemrME3g",
+  authDomain: "shooter-game-fdd6c.firebaseapp.com",
+  databaseURL: "https://shooter-game-fdd6c-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "shooter-game-fdd6c",
+  storageBucket: "shooter-game-fdd6c.firebasestorage.app",
+  messagingSenderId: "936664078983",
+  appId: "1:936664078983:web:9dba8b031692ff27c2b622"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// Save a score to Firebase — input sanitized before storage
+window._fbSaveScore = async function(name, score) {
+  const safeName = String(name).replace(/[<>"'&]/g, '').trim().slice(0, 20) || '???';
+  const safeScore = Math.floor(Number(score)) || 0;
+  try {
+    await push(ref(db, 'leaderboard'), {
+      name: safeName,
+      score: safeScore,
+      date: new Date().toISOString().slice(0, 10)
+    });
+  } catch(e) { console.warn('Firebase save failed:', e.message); }
+};
+
+// Fetch top 10 global scores, sorted descending
+window._fbFetchTop10 = async function() {
+  try {
+    const q = query(ref(db, 'leaderboard'), orderByChild('score'), limitToLast(10));
+    const snap = await get(q);
+    if (!snap.exists()) return [];
+    const entries = [];
+    snap.forEach(child => {
+      const v = child.val();
+      // Validate structure — guards against malformed/injected data
+      if (v && typeof v.name === 'string' && typeof v.score === 'number' && isFinite(v.score)) {
+        entries.push({ name: v.name.slice(0, 20), score: v.score, date: v.date || '' });
+      }
+    });
+    return entries.sort((a, b) => b.score - a.score);
+  } catch(e) { console.warn('Firebase fetch failed:', e.message); return []; }
+};
 </script>
 </body>
 </html>
