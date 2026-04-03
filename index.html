@@ -623,7 +623,8 @@ class Enemy {
     if(!this.isBoss){
       const rdx=this.x-player.x,rdy=this.y-player.y;
       const rdist=Math.sqrt(rdx*rdx+rdy*rdy);
-      const minDist=(this.w+10)*0.5;
+      // minDist must exceed muzzle tip offset (12px) so bullets always spawn before the enemy
+      const minDist=Math.max((this.w+10)*0.5, 16);
       if(rdist<minDist){
         if(rdist>0.01){
           // Teleport to exact minimum separation — guarantees no sticking regardless of speed
