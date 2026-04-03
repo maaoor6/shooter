@@ -2009,65 +2009,126 @@ function drawNameInput(ctx,g){
 }
 
 function drawLeaderboard(ctx,g){
-  ctx.fillStyle='rgba(0,0,0,0.93)';ctx.fillRect(0,0,CW,CH);
-  ctx.textBaseline='top';
+  // ── Background ──
+  ctx.fillStyle='#050810';ctx.fillRect(0,0,CW,CH);
+
+  // Subtle grid lines
+  ctx.strokeStyle='rgba(0,180,255,0.04)';ctx.lineWidth=1;
+  for(let y=0;y<CH;y+=16){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(CW,y);ctx.stroke();}
+  for(let x=0;x<CW;x+=16){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,CH);ctx.stroke();}
+
+  // Top glow bar
+  const tg=ctx.createLinearGradient(0,0,CW,0);
+  tg.addColorStop(0,'rgba(0,0,0,0)');tg.addColorStop(0.5,'rgba(255,210,0,0.18)');tg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=tg;ctx.fillRect(0,0,CW,38);
 
   // ── Title ──
-  ctx.fillStyle='rgba(255,200,0,0.13)';ctx.fillRect(0,0,CW,30);
-  ctx.textAlign='center';
-  ctx.font='bold 20px monospace';ctx.fillStyle='#FFDD00';
-  ctx.fillText('🌍 GLOBAL LEADERBOARD',CW/2,6);
+  ctx.textBaseline='top';ctx.textAlign='center';
+  ctx.font='bold 18px monospace';
+  ctx.shadowColor='#FFD700';ctx.shadowBlur=18;
+  ctx.fillStyle='#FFD700';ctx.fillText('GLOBAL LEADERBOARD',CW/2,7);
+  ctx.shadowBlur=0;
+
+  // Title underline
+  const ul=ctx.createLinearGradient(0,0,CW,0);
+  ul.addColorStop(0,'rgba(0,0,0,0)');ul.addColorStop(0.5,'rgba(255,210,0,0.7)');ul.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=ul;ctx.fillRect(0,28,CW,1);
 
   // ── Column headers ──
-  const rowH=26,startY=36;
-  ctx.font='bold 8px monospace';ctx.fillStyle='#888';
-  ctx.textAlign='left'; ctx.fillText('RANK',8,startY);
-  ctx.fillText('NAME',44,startY);
-  ctx.textAlign='right';ctx.fillText('SCORE',CW-50,startY);
-  ctx.fillText('DATE',CW-8,startY);
-  ctx.fillStyle='rgba(255,255,255,0.08)';ctx.fillRect(0,startY+10,CW,1);
+  const rowH=21,startY=36,padL=10,padR=10;
+  ctx.font='bold 7px monospace';ctx.fillStyle='rgba(0,200,255,0.55)';
+  ctx.textAlign='left';ctx.fillText('RANK',padL,startY);
+  ctx.fillText('NAME',padL+34,startY);
+  ctx.textAlign='right';ctx.fillText('SCORE',CW-padR-42,startY);
+  ctx.fillText('DATE',CW-padR,startY);
+
+  ctx.fillStyle='rgba(0,200,255,0.12)';ctx.fillRect(0,startY+9,CW,1);
 
   // ── Rows ──
   const lb=g._globalLB||[];
+  const bodyY=startY+12;
+
   if(lb.length===0){
-    ctx.font='11px monospace';ctx.textAlign='center';
+    ctx.textAlign='center';
     if(typeof window._fbFetchTop10==='function'){
-      ctx.fillStyle='#555';ctx.fillText('Loading scores…',CW/2,startY+40);
+      const pulse=0.5+0.5*Math.sin(Date.now()/400);
+      ctx.fillStyle=`rgba(0,200,255,${0.35+0.25*pulse})`;
+      ctx.font='11px monospace';ctx.fillText('LOADING SCORES…',CW/2,bodyY+50);
+      // Spinner dots
+      for(let d=0;d<3;d++){
+        const a=(Date.now()/250+d*1.2)%(Math.PI*2);
+        ctx.fillStyle=`rgba(0,200,255,${0.3+0.7*Math.max(0,Math.sin(a))})`;
+        ctx.beginPath();ctx.arc(CW/2-12+d*12,bodyY+70,3,0,Math.PI*2);ctx.fill();
+      }
     } else {
-      ctx.fillStyle='#444';ctx.fillText('No scores yet — be the first!',CW/2,startY+40);
+      ctx.fillStyle='#334';ctx.font='10px monospace';
+      ctx.fillText('No scores yet — be the first!',CW/2,bodyY+50);
     }
   } else {
     lb.forEach((e,i)=>{
-      const y=startY+14+i*rowH;
-      // Alternate row bg
-      if(i%2===0){ctx.fillStyle='rgba(255,255,255,0.025)';ctx.fillRect(0,y-2,CW,rowH);}
-      // Rank
-      const rankCol=i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'#556';
-      ctx.font='bold 11px monospace';ctx.fillStyle=rankCol;
-      ctx.textAlign='left';ctx.fillText('#'+(i+1),8,y+4);
-      // Name (safe — canvas fillText, never innerHTML)
-      const dn=e.name.length>16?e.name.slice(0,15)+'…':e.name;
-      ctx.fillStyle=i<3?rankCol:'#FFFFFF';
-      ctx.font=(i<3?'bold ':'')+'11px monospace';
-      ctx.fillText(dn,44,y+4);
+      const y=bodyY+i*rowH;
+      const isTop3=i<3;
+      const medalCol=i===0?'#FFD700':i===1?'#D0D0D8':i===2?'#E8904A':'#4A5068';
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':null;
+
+      // Row background — top 3 get a tinted glow strip
+      if(isTop3){
+        const rowBg=ctx.createLinearGradient(0,y,CW,y);
+        const alpha=i===0?0.10:i===1?0.07:0.05;
+        rowBg.addColorStop(0,'rgba(0,0,0,0)');
+        rowBg.addColorStop(0.3,`rgba(${i===0?'255,200,0':i===1?'192,192,220':'220,130,60'},${alpha})`);
+        rowBg.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=rowBg;ctx.fillRect(0,y,CW,rowH-1);
+      } else if(i%2===0){
+        ctx.fillStyle='rgba(255,255,255,0.018)';ctx.fillRect(0,y,CW,rowH-1);
+      }
+
+      // Rank / Medal
+      if(medal){
+        ctx.font='12px serif';ctx.textAlign='left';ctx.fillText(medal,padL-1,y+3);
+      } else {
+        ctx.font='bold 9px monospace';ctx.fillStyle=medalCol;
+        ctx.textAlign='left';ctx.fillText('#'+(i+1),padL+1,y+5);
+      }
+
+      // Name
+      const dn=e.name.length>15?e.name.slice(0,14)+'…':e.name;
+      ctx.textAlign='left';ctx.font=(isTop3?'bold ':'')+'10px monospace';
+      if(isTop3){ctx.shadowColor=medalCol;ctx.shadowBlur=6;}
+      ctx.fillStyle=isTop3?medalCol:'#AABBCC';
+      ctx.fillText(dn,padL+34,y+5);
+      ctx.shadowBlur=0;
+
       // Score
-      ctx.textAlign='right';ctx.fillStyle='#00CCFF';
-      ctx.font='bold 11px monospace';
-      ctx.fillText(String(e.score).padStart(7,'0'),CW-50,y+4);
+      ctx.textAlign='right';ctx.font='bold 10px monospace';
+      if(isTop3){ctx.shadowColor='#00DDFF';ctx.shadowBlur=8;}
+      ctx.fillStyle='#00DDFF';
+      const scoreStr=e.score>=1000000?(e.score/1000000).toFixed(1)+'M':
+                     e.score>=1000?(e.score/1000).toFixed(1)+'K':
+                     String(e.score);
+      ctx.fillText(scoreStr,CW-padR-42,y+5);
+      ctx.shadowBlur=0;
+
       // Date
-      ctx.fillStyle='#444';ctx.font='8px monospace';
-      ctx.fillText(e.date||'',CW-8,y+6);
-      // Divider
-      ctx.fillStyle='rgba(255,255,255,0.04)';ctx.fillRect(0,y+rowH-2,CW,1);
+      ctx.fillStyle='rgba(100,120,160,0.7)';ctx.font='7px monospace';
+      ctx.textAlign='right';ctx.fillText(e.date||'',CW-padR,y+6);
+
+      // Row divider
+      ctx.fillStyle='rgba(0,150,255,0.07)';ctx.fillRect(padL,y+rowH-1,CW-padL*2,1);
     });
   }
 
   // ── Footer ──
+  const footerY=CH-13;
+  const fg=ctx.createLinearGradient(0,0,CW,0);
+  fg.addColorStop(0,'rgba(0,0,0,0)');fg.addColorStop(0.5,'rgba(0,150,255,0.15)');fg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=fg;ctx.fillRect(0,footerY-5,CW,1);
+
   if(Math.floor(Date.now()/600)%2===0){
-    ctx.font='10px monospace';ctx.fillStyle='#00CCFF';ctx.textAlign='center';
-    ctx.fillText('PRESS ANY KEY TO CONTINUE',CW/2,CH-14);
+    ctx.font='bold 8px monospace';ctx.fillStyle='rgba(0,200,255,0.75)';ctx.textAlign='center';
+    ctx.fillText('▶  PRESS ANY KEY TO CONTINUE  ◀',CW/2,footerY);
   }
-  ctx.textAlign='left';
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';
 }
 
 // ── Game ──────────────────────────────────────────────────────────────────────
@@ -2490,7 +2551,7 @@ let _lastState='';
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-analytics.js";
-import { getDatabase, ref, push, query, orderByChild, limitToLast, get }
+import { getDatabase, ref, push, get }
   from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -2511,8 +2572,8 @@ const db = getDatabase(app);
 // Fetch top 10 global scores, sorted descending
 window._fbFetchTop10 = async function() {
   try {
-    const q = query(ref(db, 'leaderboard'), orderByChild('score'), limitToLast(10));
-    const snap = await get(q);
+    // Fetch all entries and sort client-side (avoids needing .indexOn rule)
+    const snap = await get(ref(db, 'leaderboard'));
     if (!snap.exists()) return [];
     const entries = [];
     snap.forEach(child => {
@@ -2521,7 +2582,8 @@ window._fbFetchTop10 = async function() {
         entries.push({ name: v.name.slice(0, 20), score: v.score, date: v.date || '' });
       }
     });
-    return entries.sort((a, b) => b.score - a.score);
+    entries.sort((a, b) => b.score - a.score);
+    return entries.slice(0, 10);
   } catch(e) { console.warn('Firebase fetch failed:', e.message); return []; }
 };
 
