@@ -108,6 +108,16 @@ Cycles `pendingWeaponSwitch` through `Object.keys(WEAPONS)` with wrap-around.
 
 `Enemy.update()` runs a separation check after movement:
 - Computes distance to player
-- If `dist < (enemy.w + 10) * 0.5` → applies outward force proportional to overlap
+- If `dist < (enemy.w + 10) * 0.5` → instant position constraint (teleport to minDist)
 - Skipped for bosses (`isBoss=true`) to preserve boss fight feel
 - Prevents the "sticky enemy" bug where FastEnemies lock onto the player hitbox
+
+## Visual & Combat Polish
+
+**Font:** `'Press Start 2P', monospace` (loaded from Google Fonts CDN) is used for all key UI text: HUD labels, weapon name, combo, score, level, leaderboard, and all title/game-over/victory screens. Detail text (control hints, enemy counts) stays in `monospace`.
+
+**Enemy Death Particles:** `Game.update()` calls `spawnExp(particles, e.x, e.y)` for each dying enemy before filtering dead enemies. Bosses call `spawnBlast()` instead (larger burst).
+
+**Player Recoil:** `WEAPONS` entries include optional `recoil` (pixels) field. `Player._shoot()` pushes player backward by `recoil` units along the barrel axis on fire. Values: shotgun=2, rocket=5, plasma=4, flame=1.
+
+**Weapon Fire Shake:** `WEAPONS` entries include optional `shake` field. `Player._shoot()` applies `game._shake = max(game._shake, w.shake)` on fire. Values: shotgun=1, plasma=1.5, flame=0.5. Rocket shakes on explosion impact (existing behavior).
