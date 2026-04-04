@@ -1982,14 +1982,58 @@ function drawStartScreen(ctx,g){
   if(g.input&&g.input.isMobile){
     ctx.fillStyle=PAL.CYAN;ctx.fillText('LEFT=MOVE   RIGHT=AIM+FIRE',CW/2,278);
   }
-  ctx.font='9px monospace';ctx.fillStyle=PAL.LAVENDER;ctx.fillText('HI: '+String(g.highScore).padStart(6,'0'),CW/2,295);
-  // Leaderboard button — bigger hit area on mobile
-  const lbW=g.input&&g.input.isMobile?200:140;
-  ctx.fillStyle='rgba(255,200,0,0.15)';ctx.fillRect(CW/2-lbW/2,308,lbW,28);
-  ctx.strokeStyle='#FFDD00';ctx.lineWidth=1;ctx.strokeRect(CW/2-lbW/2,308,lbW,28);
-  ctx.font="bold 8px 'Press Start 2P', monospace";ctx.fillStyle='#FFDD00';
-  ctx.fillText(g.input&&g.input.isMobile?'TAP  HALL OF FAME':'[ L ]  HALL OF FAME',CW/2,317);
-  ctx.font='7px monospace';ctx.fillStyle=PAL.DARKGREY;ctx.textAlign='right';ctx.fillText('v3.0',CW-4,CH-16);ctx.textAlign='left';
+  ctx.font='9px monospace';ctx.fillStyle=PAL.LAVENDER;ctx.fillText('HI: '+String(g.highScore).padStart(6,'0'),CW/2,294);
+
+  // ── Leaderboard button ────────────────────────────────────────────────────────
+  const pulse=0.7+0.3*Math.sin(Date.now()/500);
+  const btnY=308,btnH=34,btnW=200,btnR=6;
+  const bx=CW/2-btnW/2;
+
+  // Outer glow
+  ctx.globalAlpha=0.18*pulse;
+  ctx.fillStyle='#FFD700';
+  ctx.fillRect(bx-4,btnY-4,btnW+8,btnH+8);
+  ctx.globalAlpha=1;
+
+  // Background gradient fill
+  const bg=ctx.createLinearGradient(bx,btnY,bx,btnY+btnH);
+  bg.addColorStop(0,'rgba(255,200,0,0.22)');
+  bg.addColorStop(1,'rgba(180,120,0,0.10)');
+  ctx.fillStyle=bg;
+  ctx.beginPath();
+  ctx.moveTo(bx+btnR,btnY);ctx.lineTo(bx+btnW-btnR,btnY);
+  ctx.arcTo(bx+btnW,btnY,bx+btnW,btnY+btnR,btnR);
+  ctx.lineTo(bx+btnW,btnY+btnH-btnR);
+  ctx.arcTo(bx+btnW,btnY+btnH,bx+btnW-btnR,btnY+btnH,btnR);
+  ctx.lineTo(bx+btnR,btnY+btnH);
+  ctx.arcTo(bx,btnY+btnH,bx,btnY+btnH-btnR,btnR);
+  ctx.lineTo(bx,btnY+btnR);
+  ctx.arcTo(bx,btnY,bx+btnR,btnY,btnR);
+  ctx.closePath();ctx.fill();
+
+  // Border
+  ctx.globalAlpha=0.5+0.5*pulse;
+  ctx.strokeStyle='#FFD700';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.globalAlpha=1;
+
+  // Top highlight line
+  ctx.globalAlpha=0.4;ctx.strokeStyle='#FFF8C0';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(bx+btnR+2,btnY+1);ctx.lineTo(bx+btnW-btnR-2,btnY+1);ctx.stroke();
+  ctx.globalAlpha=1;
+
+  // Trophy icon
+  ctx.font='12px serif';ctx.textAlign='left';ctx.fillText('🏆',bx+12,btnY+5);
+
+  // Label
+  ctx.font="bold 7px 'Press Start 2P', monospace";ctx.fillStyle='#FFE566';
+  ctx.textAlign='center';ctx.fillText('HALL OF FAME',CW/2,btnY+7);
+
+  // Sub-label
+  ctx.font="6px 'Press Start 2P', monospace";
+  ctx.fillStyle=g.input&&g.input.isMobile?'rgba(255,220,100,0.7)':'rgba(255,220,100,0.7)';
+  ctx.fillText(g.input&&g.input.isMobile?'TAP TO VIEW':'[ L ] TO VIEW',CW/2,btnY+20);
+
+  ctx.font='7px monospace';ctx.fillStyle=PAL.DARKGREY;ctx.textAlign='right';ctx.fillText('v3.1',CW-4,CH-16);ctx.textAlign='left';
 }
 function drawLevelComplete(ctx,g){
   const lev=g.level;
