@@ -151,11 +151,11 @@ class InputHandler {
       cw:r.width,ch:r.height};
   }
   _onTouchStart(e,canvas){
-    this.anyKey=true; this.isMobile=true;
+    this.anyKey=true;this.isMobile=true;
     for(const t of e.changedTouches){
       const p=this._pos(t,canvas);
       // Weapon buttons hit test — only when actively playing
-      if(game&&['PLAYING','LEVEL_COMPLETE'].includes(game.state)&&this._checkWeaponButtons(p.canvasX,p.canvasY))continue;
+      if(game&&game.state==='PLAYING'&&this._checkWeaponButtons(p.canvasX,p.canvasY))continue;
       if(p.cssX<p.cw*0.5&&!this.joystick.active){
         // Left half → movement joystick
         this.joystick.active=true;this.joystick.id=t.identifier;
@@ -179,6 +179,12 @@ class InputHandler {
         this.joystick.knobCSS={x:p.cssX,y:p.cssY};
         const dx=p.cssX-this.joystick.baseCSS.x,dy=p.cssY-this.joystick.baseCSS.y;
         const mag=Math.sqrt(dx*dx+dy*dy),maxT=p.cw*JOY_R;
+        // Float base: when knob exceeds maxR, slide base toward finger
+        if(mag>maxT){
+          const over=mag-maxT;
+          this.joystick.baseCSS.x+=dx/mag*over;
+          this.joystick.baseCSS.y+=dy/mag*over;
+        }
         if(mag>6){
           const nx=dx/Math.max(mag,maxT),ny=dy/Math.max(mag,maxT);
           if(nx<-0.28)this.keys.add('KeyA');else this.keys.delete('KeyA');
@@ -190,6 +196,12 @@ class InputHandler {
         this.rightJoy.knobCSS={x:p.cssX,y:p.cssY};
         const dx=p.cssX-this.rightJoy.baseCSS.x,dy=p.cssY-this.rightJoy.baseCSS.y;
         const mag=Math.sqrt(dx*dx+dy*dy),maxT=p.cw*JOY_R;
+        // Float base: when knob exceeds maxR, slide base toward finger
+        if(mag>maxT){
+          const over=mag-maxT;
+          this.rightJoy.baseCSS.x+=dx/mag*over;
+          this.rightJoy.baseCSS.y+=dy/mag*over;
+        }
         this.rightJoy.magnitude=Math.min(mag/maxT,1);
         if(mag>5)this.rightJoy.angle=Math.atan2(dy,dx);
       }
@@ -609,6 +621,7 @@ class Enemy {
     this.frozen=0;this.slowFactor=0.3;
   }
   update(dt,player){
+    if(this.spawnShield>0)this.spawnShield-=dt;
     if(this.frozen>0)this.frozen-=dt;
     const spd=this.frozen>0?this.speed*this.slowFactor:this.speed;
     const dx=player.x-this.x,dy=player.y-this.y;
@@ -640,7 +653,11 @@ class Enemy {
     }
   }
   takeDamage(dmg){
-    this.hp-=dmg;this.hitFlash=0.08;
+    // Spawn shield: boss is invulnerable for 2.5s after entering the screen
+    if(this.spawnShield>0){this.hitFlash=0.04;return;}
+    // Damage cap for bosses: no single hit exceeds 12% of max HP (prevents plasma/rocket one-shots)
+    const effective=this.isBoss?Math.min(dmg,Math.ceil(this.maxHp*0.12)):dmg;
+    this.hp-=effective;this.hitFlash=0.08;
     if(this.hp<=0)this.dead=true;
   }
   drawHpBar(ctx,w=14){
@@ -885,7 +902,7 @@ class Boss1 extends Enemy {
     this.phase=1;this.shootTimer=0;this.chargeTimer=0;
     this.charging=false;this.chargeVx=0;this.chargeVy=0;
     this.chargeTime=0;this.name='TANK COMMANDER';
-    this.dropChance=1;this.dropType='weapon_rocket';
+    this.dropChance=1;this.dropType='weapon_rocket';this.spawnShield=2.5;
   }
   update(dt,player,bullets){
     const hpR=this.hp/this.maxHp;
@@ -955,7 +972,7 @@ class Boss2 extends Enemy {
     this.phase=1;this.shootTimer=0;this.orbAngle=0;
     this.teleportTimer=5;this.name='VOID OVERLORD';
     this.dropChance=1;this.dropType='weapon_laser';
-    this.minions=[];
+    this.minions=[];this.spawnShield=2.5;
   }
   update(dt,player,bullets,enemies){
     const hpR=this.hp/this.maxHp;
@@ -1029,7 +1046,7 @@ class Boss3 extends Enemy {
     super(x,y);this.w=20;this.h=24;this.hp=40;this.maxHp=40;
     this.speed=16;this.scoreValue=2000;this.isBoss=true;
     this.phase=1;this.shootTimer=1.5;this.teleportTimer=4;this.orbAngle=0;
-    this.name='PLAGUE WITCH';this.dropChance=1;this.dropType='weapon_freeze';
+    this.name='PLAGUE WITCH';this.dropChance=1;this.dropType='weapon_freeze';this.spawnShield=2.5;
   }
   update(dt,player,bullets){
     const hpR=this.hp/this.maxHp;
@@ -1092,7 +1109,7 @@ class Boss4 extends Enemy {
     super(x,y);this.w=30;this.h=30;this.hp=70;this.maxHp=70;
     this.speed=10;this.scoreValue=4000;this.isBoss=true;
     this.phase=1;this.shootTimer=1.5;this.spinAngle=0;
-    this.name='IRON SENTINEL';this.dropChance=1;this.dropType='weapon_plasma';
+    this.name='IRON SENTINEL';this.dropChance=1;this.dropType='weapon_plasma';this.spawnShield=2.5;
   }
   update(dt,player,bullets,enemies){
     const hpR=this.hp/this.maxHp;
@@ -1154,7 +1171,7 @@ class Boss5 extends Enemy {
     super(x,y);this.w=24;this.h=28;this.hp=110;this.maxHp=110;
     this.speed=20;this.scoreValue=6000;this.isBoss=true;
     this.phase=1;this.shootTimer=1.8;this.orbAngle=0;
-    this.name='STORM HYDRA';this.dropChance=1;this.dropType='weapon_shotgun';
+    this.name='STORM HYDRA';this.dropChance=1;this.dropType='weapon_shotgun';this.spawnShield=2.5;
   }
   update(dt,player,bullets,enemies){
     const hpR=this.hp/this.maxHp;
@@ -1218,7 +1235,7 @@ class Boss6 extends Enemy {
     this.speed=8;this.scoreValue=7000;this.isBoss=true;
     this.phase=1;this.shootTimer=2.5;this.chargeTimer=5;
     this.charging=false;this.chargeVx=0;this.chargeVy=0;this.chargeTime=0;
-    this.name='NECRO TITAN';this.dropChance=1;this.dropType='weapon_rocket';
+    this.name='NECRO TITAN';this.dropChance=1;this.dropType='weapon_rocket';this.spawnShield=2.5;
   }
   update(dt,player,bullets,enemies){
     const hpR=this.hp/this.maxHp;
@@ -2149,6 +2166,7 @@ class Game {
     this._setupScale();
     this._ready=true;
     window.addEventListener('resize',()=>this._setupScale());
+    window.addEventListener('orientationchange',()=>{setTimeout(()=>this._setupScale(),150);});
     this.bg=buildBackground();this.audio=null;
     this.highScore=parseInt(localStorage.getItem('retro_assault_hi')||'0');
     this._initGame();
@@ -2453,6 +2471,16 @@ class Game {
           ctx.globalAlpha=0.35;ctx.fillStyle='#C8F4FF';
           ctx.fillRect(Math.round(e.x)-e.w/2,Math.round(e.y)-e.h/2,e.w,e.h);
           ctx.globalAlpha=1;
+        }
+        // spawn shield overlay — pulsing cyan glow shows boss is invulnerable
+        if(e.spawnShield>0&&e.hitFlash<=0){
+          const pulse=0.4+0.35*Math.sin(Date.now()/90);
+          ctx.globalAlpha=pulse;
+          ctx.strokeStyle='#00FFFF';ctx.lineWidth=2;
+          ctx.strokeRect(Math.round(e.x)-e.w/2-1,Math.round(e.y)-e.h/2-1,e.w+2,e.h+2);
+          ctx.globalAlpha=pulse*0.3;ctx.fillStyle='#00FFFF';
+          ctx.fillRect(Math.round(e.x)-e.w/2,Math.round(e.y)-e.h/2,e.w,e.h);
+          ctx.globalAlpha=1;ctx.lineWidth=1;
         }
       }
       this.player.draw(ctx);
