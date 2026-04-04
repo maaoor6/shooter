@@ -156,6 +156,15 @@ class InputHandler {
       const p=this._pos(t,canvas);
       // Weapon buttons hit test — only when actively playing
       if(game&&game.state==='PLAYING'&&this._checkWeaponButtons(p.canvasX,p.canvasY))continue;
+      // Leaderboard button on START screen — intercept before joystick/anyKey logic
+      if(game&&game.state==='START'){
+        const cx=p.canvasX,cy=p.canvasY;
+        if(cx>=CW/2-100&&cx<=CW/2+100&&cy>=308&&cy<=336){
+          this.anyKey=false;
+          game._lbAutoTimer=999;game._lbFetching=false;game.state='LEADERBOARD';
+          continue;
+        }
+      }
       if(p.cssX<p.cw*0.5&&!this.joystick.active){
         // Left half → movement joystick
         this.joystick.active=true;this.joystick.id=t.identifier;
@@ -622,11 +631,6 @@ class Enemy {
     this.entryAlpha=0; // fades from 0→1 as enemy enters the screen
   }
   update(dt,player){
-    // Fade in once the enemy crosses into the visible game area
-    if(this.entryAlpha<1){
-      const onScreen=this.x>0&&this.x<W&&this.y>0&&this.y<H;
-      if(onScreen)this.entryAlpha=Math.min(1,this.entryAlpha+dt*4);
-    }
     if(this.frozen>0)this.frozen-=dt;
     const spd=this.frozen>0?this.speed*this.slowFactor:this.speed;
     const dx=player.x-this.x,dy=player.y-this.y;
@@ -2348,6 +2352,10 @@ class Game {
           else if(e instanceof Boss5)e.update(dt,this.player,this.bullets,this.enemies);
           else if(e instanceof Boss6)e.update(dt,this.player,this.bullets,this.enemies);
           else e.update(dt,this.player);
+        }
+        // Entry fade works for ALL enemy types including bosses that override update()
+        for(const e of this.enemies){
+          if(e.entryAlpha<1){const os=e.x>0&&e.x<W&&e.y>0&&e.y<H;if(os)e.entryAlpha=Math.min(1,e.entryAlpha+dt*4);}
         }
         for(const b of this.bullets)b.update(dt);
         for(const p of this.particles)p.update(dt);
