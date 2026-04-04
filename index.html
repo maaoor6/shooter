@@ -619,9 +619,14 @@ class Enemy {
     this.scoreValue=100;this.dead=false;this.hitFlash=0;
     this.dropChance=0.15;this.isBoss=false;
     this.frozen=0;this.slowFactor=0.3;
+    this.entryAlpha=0; // fades from 0→1 as enemy enters the screen
   }
   update(dt,player){
-    if(this.spawnShield>0)this.spawnShield-=dt;
+    // Fade in once the enemy crosses into the visible game area
+    if(this.entryAlpha<1){
+      const onScreen=this.x>0&&this.x<W&&this.y>0&&this.y<H;
+      if(onScreen)this.entryAlpha=Math.min(1,this.entryAlpha+dt*4);
+    }
     if(this.frozen>0)this.frozen-=dt;
     const spd=this.frozen>0?this.speed*this.slowFactor:this.speed;
     const dx=player.x-this.x,dy=player.y-this.y;
@@ -653,10 +658,8 @@ class Enemy {
     }
   }
   takeDamage(dmg){
-    // Spawn shield: boss is invulnerable for 2.5s after entering the screen
-    if(this.spawnShield>0){this.hitFlash=0.04;return;}
-    // Damage cap for bosses: no single hit exceeds 12% of max HP (prevents plasma/rocket one-shots)
-    const effective=this.isBoss?Math.min(dmg,Math.ceil(this.maxHp*0.12)):dmg;
+    // Damage cap for bosses: no single hit exceeds 15% of max HP (prevents plasma/rocket one-shots)
+    const effective=this.isBoss?Math.min(dmg,Math.ceil(this.maxHp*0.15)):dmg;
     this.hp-=effective;this.hitFlash=0.08;
     if(this.hp<=0)this.dead=true;
   }
@@ -902,7 +905,7 @@ class Boss1 extends Enemy {
     this.phase=1;this.shootTimer=0;this.chargeTimer=0;
     this.charging=false;this.chargeVx=0;this.chargeVy=0;
     this.chargeTime=0;this.name='TANK COMMANDER';
-    this.dropChance=1;this.dropType='weapon_rocket';this.spawnShield=2.5;
+    this.dropChance=1;this.dropType='weapon_rocket';
   }
   update(dt,player,bullets){
     const hpR=this.hp/this.maxHp;
@@ -972,7 +975,7 @@ class Boss2 extends Enemy {
     this.phase=1;this.shootTimer=0;this.orbAngle=0;
     this.teleportTimer=5;this.name='VOID OVERLORD';
     this.dropChance=1;this.dropType='weapon_laser';
-    this.minions=[];this.spawnShield=2.5;
+    this.minions=[];
   }
   update(dt,player,bullets,enemies){
     const hpR=this.hp/this.maxHp;
@@ -1046,7 +1049,7 @@ class Boss3 extends Enemy {
     super(x,y);this.w=20;this.h=24;this.hp=40;this.maxHp=40;
     this.speed=16;this.scoreValue=2000;this.isBoss=true;
     this.phase=1;this.shootTimer=1.5;this.teleportTimer=4;this.orbAngle=0;
-    this.name='PLAGUE WITCH';this.dropChance=1;this.dropType='weapon_freeze';this.spawnShield=2.5;
+    this.name='PLAGUE WITCH';this.dropChance=1;this.dropType='weapon_freeze';
   }
   update(dt,player,bullets){
     const hpR=this.hp/this.maxHp;
@@ -1109,7 +1112,7 @@ class Boss4 extends Enemy {
     super(x,y);this.w=30;this.h=30;this.hp=70;this.maxHp=70;
     this.speed=10;this.scoreValue=4000;this.isBoss=true;
     this.phase=1;this.shootTimer=1.5;this.spinAngle=0;
-    this.name='IRON SENTINEL';this.dropChance=1;this.dropType='weapon_plasma';this.spawnShield=2.5;
+    this.name='IRON SENTINEL';this.dropChance=1;this.dropType='weapon_plasma';
   }
   update(dt,player,bullets,enemies){
     const hpR=this.hp/this.maxHp;
@@ -1171,7 +1174,7 @@ class Boss5 extends Enemy {
     super(x,y);this.w=24;this.h=28;this.hp=110;this.maxHp=110;
     this.speed=20;this.scoreValue=6000;this.isBoss=true;
     this.phase=1;this.shootTimer=1.8;this.orbAngle=0;
-    this.name='STORM HYDRA';this.dropChance=1;this.dropType='weapon_shotgun';this.spawnShield=2.5;
+    this.name='STORM HYDRA';this.dropChance=1;this.dropType='weapon_shotgun';
   }
   update(dt,player,bullets,enemies){
     const hpR=this.hp/this.maxHp;
@@ -1235,7 +1238,7 @@ class Boss6 extends Enemy {
     this.speed=8;this.scoreValue=7000;this.isBoss=true;
     this.phase=1;this.shootTimer=2.5;this.chargeTimer=5;
     this.charging=false;this.chargeVx=0;this.chargeVy=0;this.chargeTime=0;
-    this.name='NECRO TITAN';this.dropChance=1;this.dropType='weapon_rocket';this.spawnShield=2.5;
+    this.name='NECRO TITAN';this.dropChance=1;this.dropType='weapon_rocket';
   }
   update(dt,player,bullets,enemies){
     const hpR=this.hp/this.maxHp;
@@ -1571,27 +1574,104 @@ function drawAimLine(ctx,player,mouse){
 // ── Crosshair ─────────────────────────────────────────────────────────────────
 function drawCrosshair(ctx,mx,my,weapon){
   const col=WEAPONS[weapon]?.col||PAL.WHITE;
-  const s=6,gap=3;
-  // Outer glow ring
-  ctx.globalAlpha=0.25;ctx.strokeStyle=col;ctx.lineWidth=3;
-  ctx.beginPath();ctx.arc(mx,my,s+3,0,Math.PI*2);ctx.stroke();
+  const t=Date.now();
+
+  // Shared: outer soft glow
+  ctx.globalAlpha=0.18;ctx.fillStyle=col;
+  ctx.beginPath();ctx.arc(mx,my,14,0,Math.PI*2);ctx.fill();
   ctx.globalAlpha=1;
-  // Four arms
-  ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=1;
-  ctx.beginPath();ctx.moveTo(mx-s-gap,my);ctx.lineTo(mx-gap,my);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(mx+gap,my);ctx.lineTo(mx+s+gap,my);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(mx,my-s-gap);ctx.lineTo(mx,my-gap);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(mx,my+gap);ctx.lineTo(mx,my+s+gap);ctx.stroke();
-  // Center dot (weapon color)
-  ctx.fillStyle=col;ctx.fillRect(mx-1,my-1,3,3);
-  ctx.fillStyle='#fff';ctx.fillRect(mx,my,1,1);
-  // Corner brackets (weapon-colored)
-  ctx.strokeStyle=col;ctx.lineWidth=1;
-  const br=s+2,bc=3;
-  ctx.beginPath();ctx.moveTo(mx-br,my-br+bc);ctx.lineTo(mx-br,my-br);ctx.lineTo(mx-br+bc,my-br);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(mx+br-bc,my-br);ctx.lineTo(mx+br,my-br);ctx.lineTo(mx+br,my-br+bc);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(mx-br,my+br-bc);ctx.lineTo(mx-br,my+br);ctx.lineTo(mx-br+bc,my+br);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(mx+br-bc,my+br);ctx.lineTo(mx+br,my+br);ctx.lineTo(mx+br,my+br-bc);ctx.stroke();
+
+  if(weapon==='pistol'||weapon==='smg'||weapon==='laser'){
+    // ── Precision dot + tight cross (high-accuracy weapons) ──
+    const gap=3,arm=6;
+    ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.globalAlpha=0.9;
+    ctx.beginPath();ctx.moveTo(mx-arm-gap,my);ctx.lineTo(mx-gap,my);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(mx+gap,my);ctx.lineTo(mx+arm+gap,my);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(mx,my-arm-gap);ctx.lineTo(mx,my-gap);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(mx,my+gap);ctx.lineTo(mx,my+arm+gap);ctx.stroke();
+    // Outer ring
+    ctx.globalAlpha=0.6;ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(mx,my,10,0,Math.PI*2);ctx.stroke();
+    // Dot
+    ctx.globalAlpha=1;ctx.fillStyle=col;ctx.beginPath();ctx.arc(mx,my,2,0,Math.PI*2);ctx.fill();
+
+  } else if(weapon==='shotgun'||weapon==='flame'){
+    // ── Wide spread ring (scatter weapons) ──
+    const spread=weapon==='shotgun'?16:12;
+    ctx.globalAlpha=0.5;ctx.strokeStyle=col;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(mx,my,spread,0,Math.PI*2);ctx.stroke();
+    // Inner ring
+    ctx.globalAlpha=0.25;ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(mx,my,spread*0.55,0,Math.PI*2);ctx.stroke();
+    // 4 notch marks on outer ring
+    ctx.globalAlpha=0.9;ctx.lineWidth=2;
+    for(let i=0;i<4;i++){
+      const a=i*Math.PI/2;
+      ctx.beginPath();
+      ctx.moveTo(mx+Math.cos(a)*(spread+3),my+Math.sin(a)*(spread+3));
+      ctx.lineTo(mx+Math.cos(a)*(spread+7),my+Math.sin(a)*(spread+7));
+      ctx.stroke();
+    }
+    ctx.globalAlpha=1;ctx.fillStyle=col;ctx.beginPath();ctx.arc(mx,my,2.5,0,Math.PI*2);ctx.fill();
+
+  } else if(weapon==='rocket'){
+    // ── Chunky bracket cross (heavy weapon) ──
+    const r=10;
+    ctx.strokeStyle=col;ctx.lineWidth=2;ctx.globalAlpha=0.9;
+    // Four L-brackets
+    const bc=5;
+    ctx.beginPath();ctx.moveTo(mx-r,my-r+bc);ctx.lineTo(mx-r,my-r);ctx.lineTo(mx-r+bc,my-r);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(mx+r-bc,my-r);ctx.lineTo(mx+r,my-r);ctx.lineTo(mx+r,my-r+bc);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(mx-r,my+r-bc);ctx.lineTo(mx-r,my+r);ctx.lineTo(mx-r+bc,my+r);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(mx+r-bc,my+r);ctx.lineTo(mx+r,my+r);ctx.lineTo(mx+r,my+r-bc);ctx.stroke();
+    // Center: pulsing blast radius indicator
+    const pulse=0.3+0.2*Math.sin(t/150);
+    ctx.globalAlpha=pulse;ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(mx,my,20,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=1;ctx.fillStyle=col;ctx.fillRect(mx-2,my-2,4,4);
+
+  } else if(weapon==='plasma'){
+    // ── Spinning orb ring (bouncy weapon) ──
+    const angle=(t/400)%(Math.PI*2);
+    ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.globalAlpha=0.7;
+    ctx.beginPath();ctx.arc(mx,my,12,0,Math.PI*2);ctx.stroke();
+    // 3 orbiting dots
+    for(let i=0;i<3;i++){
+      const a=angle+i*(Math.PI*2/3);
+      ctx.globalAlpha=0.9;ctx.fillStyle=col;
+      ctx.beginPath();ctx.arc(mx+Math.cos(a)*12,my+Math.sin(a)*12,2.5,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=0.5;ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(mx,my,6,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=1;ctx.fillStyle=col;ctx.beginPath();ctx.arc(mx,my,2,0,Math.PI*2);ctx.fill();
+
+  } else if(weapon==='freeze'){
+    // ── Snowflake (6-arm freeze) ──
+    ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.globalAlpha=0.85;
+    for(let i=0;i<6;i++){
+      const a=i*Math.PI/3;
+      ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx+Math.cos(a)*11,my+Math.sin(a)*11);ctx.stroke();
+      // Small crossbar
+      ctx.beginPath();
+      ctx.moveTo(mx+Math.cos(a)*7-Math.sin(a)*3,my+Math.sin(a)*7+Math.cos(a)*3);
+      ctx.lineTo(mx+Math.cos(a)*7+Math.sin(a)*3,my+Math.sin(a)*7-Math.cos(a)*3);
+      ctx.stroke();
+    }
+    ctx.globalAlpha=1;ctx.fillStyle=col;ctx.beginPath();ctx.arc(mx,my,2.5,0,Math.PI*2);ctx.fill();
+
+  } else {
+    // ── Default cross + brackets ──
+    const s=6,gap=3;
+    ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.globalAlpha=0.9;
+    ctx.beginPath();ctx.moveTo(mx-s-gap,my);ctx.lineTo(mx-gap,my);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(mx+gap,my);ctx.lineTo(mx+s+gap,my);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(mx,my-s-gap);ctx.lineTo(mx,my-gap);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(mx,my+gap);ctx.lineTo(mx,my+s+gap);ctx.stroke();
+    ctx.globalAlpha=0.5;ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(mx,my,10,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=1;ctx.fillStyle=col;ctx.beginPath();ctx.arc(mx,my,2,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;ctx.lineWidth=1;
 }
 
 // ── HUD ───────────────────────────────────────────────────────────────────────
@@ -1896,14 +1976,15 @@ function drawStartScreen(ctx,g){
   ctx.fillText('1-5: PISTOL/SHOT/SMG/ROCKET/LASER',CW/2,244);
   ctx.fillText('6: PLASMA (BOUNCE)  7: FREEZE  8: FLAMETHROWER',CW/2,260);
   if(g.input&&g.input.isMobile){
-    ctx.fillStyle=PAL.CYAN;ctx.fillText('MOBILE: LEFT=JOYSTICK  RIGHT=AIM+FIRE',CW/2,278);
+    ctx.fillStyle=PAL.CYAN;ctx.fillText('LEFT=MOVE   RIGHT=AIM+FIRE',CW/2,278);
   }
   ctx.font='9px monospace';ctx.fillStyle=PAL.LAVENDER;ctx.fillText('HI: '+String(g.highScore).padStart(6,'0'),CW/2,295);
-  // Leaderboard button
-  ctx.fillStyle='rgba(255,200,0,0.15)';ctx.fillRect(CW/2-70,312,140,22);
-  ctx.strokeStyle='#FFDD00';ctx.lineWidth=1;ctx.strokeRect(CW/2-70,312,140,22);
+  // Leaderboard button — bigger hit area on mobile
+  const lbW=g.input&&g.input.isMobile?200:140;
+  ctx.fillStyle='rgba(255,200,0,0.15)';ctx.fillRect(CW/2-lbW/2,308,lbW,28);
+  ctx.strokeStyle='#FFDD00';ctx.lineWidth=1;ctx.strokeRect(CW/2-lbW/2,308,lbW,28);
   ctx.font="bold 8px 'Press Start 2P', monospace";ctx.fillStyle='#FFDD00';
-  ctx.fillText('[ L ] HALL OF FAME',CW/2,317);
+  ctx.fillText(g.input&&g.input.isMobile?'TAP  HALL OF FAME':'[ L ]  HALL OF FAME',CW/2,317);
   ctx.font='7px monospace';ctx.fillStyle=PAL.DARKGREY;ctx.textAlign='right';ctx.fillText('v3.0',CW-4,CH-16);ctx.textAlign='left';
 }
 function drawLevelComplete(ctx,g){
@@ -2246,7 +2327,7 @@ class Game {
         const startClicks=this.input.consumeClicks();
         let openedLb=false;
         for(const c of startClicks){
-          if(c.x*2>=CW/2-70&&c.x*2<=CW/2+70&&c.y*2>=312&&c.y*2<=334){
+          if(c.x*2>=CW/2-100&&c.x*2<=CW/2+100&&c.y*2>=308&&c.y*2<=336){
             this._lbAutoTimer=999;this._lbFetching=false;this.state='LEADERBOARD';openedLb=true;break;
           }
         }
@@ -2464,23 +2545,17 @@ class Game {
       for(const b of this.bullets)b.draw(ctx);
       for(const p of this.particles)p.draw(ctx);
       for(const pk of this.pickups)pk.draw(ctx);
-      for(const e of this.enemies)e.draw(ctx);
+      for(const e of this.enemies){
+        if(e.entryAlpha<1){ctx.globalAlpha=e.entryAlpha;}
+        e.draw(ctx);
+        ctx.globalAlpha=1;
+      }
       // freeze overlay
       for(const e of this.enemies){
         if(e.frozen>0&&e.hitFlash<=0){
           ctx.globalAlpha=0.35;ctx.fillStyle='#C8F4FF';
           ctx.fillRect(Math.round(e.x)-e.w/2,Math.round(e.y)-e.h/2,e.w,e.h);
           ctx.globalAlpha=1;
-        }
-        // spawn shield overlay — pulsing cyan glow shows boss is invulnerable
-        if(e.spawnShield>0&&e.hitFlash<=0){
-          const pulse=0.4+0.35*Math.sin(Date.now()/90);
-          ctx.globalAlpha=pulse;
-          ctx.strokeStyle='#00FFFF';ctx.lineWidth=2;
-          ctx.strokeRect(Math.round(e.x)-e.w/2-1,Math.round(e.y)-e.h/2-1,e.w+2,e.h+2);
-          ctx.globalAlpha=pulse*0.3;ctx.fillStyle='#00FFFF';
-          ctx.fillRect(Math.round(e.x)-e.w/2,Math.round(e.y)-e.h/2,e.w,e.h);
-          ctx.globalAlpha=1;ctx.lineWidth=1;
         }
       }
       this.player.draw(ctx);
