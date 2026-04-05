@@ -2361,8 +2361,8 @@ class Game {
     this.combo=1;this.comboTimer=0;this._newRecord=false;
     this._bossKills=0;this._levelNoHit=true;this._weaponsPickedUp=0;this._scorePopups=[];
     this._achievementQueue=[];
-    this._unlockedAchievements=new Set(JSON.parse(localStorage.getItem('retro_achievements')||'[]'));
-    this._leaderboard=JSON.parse(localStorage.getItem('retro_assault_lb')||'[]');
+    try{this._unlockedAchievements=new Set(JSON.parse(localStorage.getItem('retro_achievements')||'[]'));}catch(e){this._unlockedAchievements=new Set();}
+    try{this._leaderboard=JSON.parse(localStorage.getItem('retro_assault_lb')||'[]');}catch(e){this._leaderboard=[];}
     this._pendingName='';this._lbHighlight=-1;this._lbAutoTimer=3;
     this._globalLB=[]; // populated by Firebase module script after it loads
     this.level=new LevelManager(this);this.level.loadLevel(1);
