@@ -990,6 +990,7 @@ class Boss2 extends Enemy {
     this.speed=10;this.scoreValue=8000;this.isBoss=true;
     this.phase=1;this.shootTimer=0;this.orbAngle=0;
     this.teleportTimer=5;this.name='VOID OVERLORD';
+    this._teleAlpha=1;this._teleState=0;this._teleFT=0;this._teleDst={x:0,y:0};
     this.dropChance=1;this.dropType='weapon_laser';
     this.minions=[];
   }
@@ -1007,8 +1008,10 @@ class Boss2 extends Enemy {
     this.x=clamp(this.x,16,W-16);this.y=clamp(this.y,18,H-18);
     if(this.phase===3){
       this.teleportTimer-=dt;
-      if(this.teleportTimer<=0){this.teleportTimer=rand(3,5);this.x=rand(30,W-30);this.y=rand(30,H-30);}
+      if(this.teleportTimer<=0&&this._teleState===0){this.teleportTimer=rand(3,5);this._teleDst={x:rand(30,W-30),y:rand(30,H-30)};this._teleState=1;this._teleFT=0.18;}
     }
+    if(this._teleState===1){this._teleFT-=dt;this._teleAlpha=Math.max(0,this._teleFT/0.18);if(this._teleFT<=0){this.x=this._teleDst.x;this.y=this._teleDst.y;this._teleState=2;this._teleFT=0.28;}}
+    else if(this._teleState===2){this._teleFT-=dt;this._teleAlpha=Math.min(1,1-this._teleFT/0.28);if(this._teleFT<=0){this._teleState=0;this._teleAlpha=1;}}
     this.shootTimer-=dt;
     if(this.shootTimer<=0){
       if(this.phase===1){
@@ -1065,7 +1068,8 @@ class Boss3 extends Enemy {
     super(x,y);this.w=20;this.h=24;this.hp=40;this.maxHp=40;
     this.speed=16;this.scoreValue=2000;this.isBoss=true;
     this.phase=1;this.shootTimer=1.5;this.teleportTimer=4;this.orbAngle=0;
-    this.name='PLAGUE WITCH';this.dropChance=1;this.dropType='weapon_freeze';
+    this.name='PLAGUE WITCH';
+    this._teleAlpha=1;this._teleState=0;this._teleFT=0;this._teleDst={x:0,y:0};this.dropChance=1;this.dropType='weapon_freeze';
   }
   update(dt,player,bullets){
     const hpR=this.hp/this.maxHp;
@@ -1081,8 +1085,10 @@ class Boss3 extends Enemy {
     this.x=clamp(this.x,10,W-10);this.y=clamp(this.y,12,H-12);
     if(this.phase>=2){
       this.teleportTimer-=dt;
-      if(this.teleportTimer<=0){this.teleportTimer=this.phase===3?2:4;this.x=rand(30,W-30);this.y=rand(30,H-30);}
+      if(this.teleportTimer<=0&&this._teleState===0){this.teleportTimer=this.phase===3?2:4;this._teleDst={x:rand(30,W-30),y:rand(30,H-30)};this._teleState=1;this._teleFT=0.15;}
     }
+    if(this._teleState===1){this._teleFT-=dt;this._teleAlpha=Math.max(0,this._teleFT/0.15);if(this._teleFT<=0){this.x=this._teleDst.x;this.y=this._teleDst.y;this._teleState=2;this._teleFT=0.22;}}
+    else if(this._teleState===2){this._teleFT-=dt;this._teleAlpha=Math.min(1,1-this._teleFT/0.22);if(this._teleFT<=0){this._teleState=0;this._teleAlpha=1;}}
     this.shootTimer-=dt;
     if(this.shootTimer<=0){
       const count=this.phase===1?3:(this.phase===2?5:8);
@@ -2612,7 +2618,8 @@ class Game {
       for(const p of this.particles)p.draw(ctx);
       for(const pk of this.pickups)pk.draw(ctx);
       for(const e of this.enemies){
-        if(e.entryAlpha<1){ctx.globalAlpha=e.entryAlpha;}
+        const _ea=Math.min(e.entryAlpha??1,e._teleAlpha??1);
+        if(_ea<1){ctx.globalAlpha=_ea;}
         e.draw(ctx);
         ctx.globalAlpha=1;
       }
